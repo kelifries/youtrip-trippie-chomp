@@ -138,9 +138,16 @@ export class Ghost {
   private chooseDir(map: number[][], player: Player): Direction {
     const canGate = this.eaten || this.home;
 
-    // Eaten ghosts use BFS for guaranteed return to pen — no more wandering lost.
+    // Eaten ghosts: BFS to pen.
     if (this.eaten) {
       const bfsDir = this.bfsNextDir(map, this.meta.penCenter.row, this.meta.penCenter.col, true);
+      if (bfsDir !== (-1 as Direction)) return bfsDir;
+    }
+
+    // Chasing ghosts: BFS to player tile so they don't oscillate in narrow corridors.
+    // Scared/patrol ghosts keep the greedy heuristic for visual variety in their wandering.
+    if (!this.scared && this.ai === 'chase') {
+      const bfsDir = this.bfsNextDir(map, player.row, player.col, false);
       if (bfsDir !== (-1 as Direction)) return bfsDir;
     }
 

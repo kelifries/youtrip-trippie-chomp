@@ -22,7 +22,7 @@ const W = 480;
 const H = 720;
 const HUD_HEIGHT = 52;
 
-type GameState = 'playing' | 'dying' | 'levelwin';
+type GameState = 'playing' | 'dying' | 'levelwin' | 'scoreboard';
 
 export class GameScene extends Phaser.Scene {
   // Game state
@@ -41,6 +41,9 @@ export class GameScene extends Phaser.Scene {
   // Timers (in ms)
   private bonusLevelTimer: number = 0;
   private powerTimer: number = 0;
+  private comboCount: number = 0;
+  private comboTimer: number = 0;  // ms until combo expires
+  private comboText?: Phaser.GameObjects.Text;
   private ghostScore: number = SCORE_GHOST_BASE;
   private invincibleTimer: number = 0;
   private freezeTimer: number = 0;
@@ -60,16 +63,26 @@ export class GameScene extends Phaser.Scene {
   // Stats
   private totalDotsEaten: number = 0;
   private totalGhostsEaten: number = 0;
+  private levelStartScore: number = 0;
+  private levelDotsAtStart: number = 0;
+  private levelGhostsAtStart: number = 0;
 
   // Rendering
   private tileSize: number = 24;
   private offsetX: number = 0;
   private offsetY: number = 0;
   private mazeGraphics!: Phaser.GameObjects.Graphics;
+  private mazeDimmer!: Phaser.GameObjects.Rectangle;
+  private mazeScanline!: Phaser.GameObjects.Rectangle;
   private entityGraphics!: Phaser.GameObjects.Graphics;
   private scoreText!: Phaser.GameObjects.Text;
   private levelText!: Phaser.GameObjects.Text;
   private muteText!: Phaser.GameObjects.Text;
+  private bonusTimerText?: Phaser.GameObjects.Text;
+  private bonusTimerLabel?: Phaser.GameObjects.Text;
+  private lastBonusSec: number = -1;
+  private tickingScore: boolean = false;
+  private transitionFreezeTimer: number = 0;
   private livesContainer!: Phaser.GameObjects.Container;
   private popupTextObj!: Phaser.GameObjects.Text;
   private bgImage!: Phaser.GameObjects.Image;
@@ -114,6 +127,18 @@ export class GameScene extends Phaser.Scene {
     this.setupRendering();
     this.setupInput();
     this.startLevel();
+
+    // Debug: ?sb=1 jumps straight to the scoreboard with stub stats so the
+    // pixel-art frame + Trippie victory render can be verified without playing
+    // through L1.
+    if (new URLSearchParams(window.location.search).get('sb') === '1') {
+      this.totalDotsEaten = 142;
+      this.totalGhostsEaten = 3;
+      this.score = 1840;
+      this.levelStartScore = 1240;
+      this.gameState = 'scoreboard';
+      this.time.delayedCall(120, () => this.showScoreboard(600));
+    }
   }
 
   private calculateLayout(): void {
@@ -142,9 +167,27 @@ export class GameScene extends Phaser.Scene {
 
     // Animated bg layers are created per-level in applyLevelBackground via setupBgAnimations(cfg.bgAnimations).
 
+    // Maze-area dimmer — semi-transparent dark rectangle covering exactly the
+    // maze tile region so dots and walls always read against any bg.
+    const dimmer = this.add.rectangle(0, 0, 1, 1, 0x000000, 0.45);
+    dimmer.setOrigin(0, 0).setDepth(1.5);
+    this.mazeDimmer = dimmer;
+
     // Maze graphics layer — explicit depth above bg layers but below sprites/HUD
     this.mazeGraphics = this.add.graphics();
     this.mazeGraphics.setDepth(2);
+
+    // Subtle breathing pulse on the maze layer — keeps walls from feeling static
+    // while staying gentle enough not to fight dot/sprite readability.
+    this.tweens.add({
+      targets: this.mazeGraphics, alpha: 0.88,
+      duration: 2400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+    });
+
+    // Slow cyan scanline sweep across the maze region — gentle CRT/arcade hum.
+    this.mazeScanline = this.add.rectangle(W / 2, 0, W, 6, 0x00ffff, 0)
+      .setDepth(2.5).setBlendMode(Phaser.BlendModes.ADD);
+    this.startMazeScanline();
 
     // Card sprites (power pellets) — depth 3 (above maze)
     this.cardSprites = [];
@@ -324,10 +367,35 @@ export class GameScene extends Phaser.Scene {
   }
 
   private startLevel(): void {
+    const bpStyle = new URLSearchParams(window.location.search).get('bp');
+    const cfgDemo = getLevelConfig(this.level);
+    const fromCode = this.level > 1 ? getLevelConfig(this.level - 1).cityCode : 'YOU';
+    if (bpStyle === 'fly') {
+      this.time.delayedCall(200, () => {
+        this.showFlightInterstitial(fromCode, cfgDemo.cityCode, cfgDemo.destination, cfgDemo.flag);
+      });
+    } else if (bpStyle === 'card' || bpStyle === 'departure' || bpStyle === 'stamp') {
+      this.time.delayedCall(200, () => {
+        this.showBoardingPass(bpStyle as any, cfgDemo.destination, cfgDemo.cityCode, cfgDemo.flag);
+      });
+    }
     this.applyLevelBackground();
     const cfg = getLevelConfig(this.level);
     this.map = cloneMaze(cfg.mazeKey);
     this.mazeMeta = analyzeMaze(this.map);
+    // Snapshot stats at level start for the scoreboard delta
+    this.levelStartScore = this.score;
+    this.levelDotsAtStart = this.totalDotsEaten;
+    this.levelGhostsAtStart = this.totalGhostsEaten;
+    // Resize the dimmer to cover the maze region — bonus levels skip the dimmer
+    // because the chamber is small and we want full bg visibility.
+    if (cfg.isBonus) {
+      this.mazeDimmer.setVisible(false);
+    } else {
+      this.mazeDimmer.setVisible(true);
+      this.mazeDimmer.setPosition(this.offsetX, this.offsetY);
+      this.mazeDimmer.setSize(COLS * this.tileSize, ROWS * this.tileSize);
+    }
     this.dotsLeft = countDots(this.map);
     this.player = new Player(this.level, this.mazeMeta);
     this.ghosts = [];
@@ -342,12 +410,12 @@ export class GameScene extends Phaser.Scene {
         g.scared = true;
         g.speed *= 0.5;
         g.home = false;
-        // Teleport above the gate so they're NOT trapped inside the pen.
         g.col = this.mazeMeta.penExit.col;
         g.row = this.mazeMeta.penExit.row;
         g.px = this.mazeMeta.penExit.col;
         g.py = this.mazeMeta.penExit.row;
       }
+      this.showBonusIntro();
     } else {
       this.bonusLevelTimer = 0;
     }
@@ -491,15 +559,218 @@ export class GameScene extends Phaser.Scene {
     this.updateHUD();
   }
 
-  private updateLevelWin(dt: number): void {
-    this.levelWinTimer -= dt;
-    if (this.levelWinTimer <= 0) {
-      this.level++;
-      this.startLevel();
+  private updateLevelWin(_dt: number): void {
+    // No longer used — scoreboard owns the post-level flow now.
+  }
+
+  private showScoreboard(levelBonus: number): void {
+    const cfg = getLevelConfig(this.level);
+    const dotsThisLevel = this.totalDotsEaten - this.levelDotsAtStart;
+    const ghostsThisLevel = this.totalGhostsEaten - this.levelGhostsAtStart;
+    const finalScore = this.score;
+
+    const objs: Phaser.GameObjects.GameObject[] = [];
+    // Darker overlay
+    const overlay = this.add.rectangle(W / 2, H / 2, W, H, 0x05050d, 0.92).setDepth(140);
+    objs.push(overlay);
+
+    // Confetti rain behind the panel — keeps screen feeling alive
+    const colors = [0xffd700, 0xff6bb5, 0x4fc3f7, 0xffb347, 0x00d2c8];
+    for (let i = 0; i < 24; i++) {
+      const c = this.add.rectangle(Math.random() * W, -10 - Math.random() * 200, 4, 4,
+        colors[i % colors.length]).setDepth(140.5).setRotation(Math.random() * Math.PI);
+      objs.push(c);
+      this.tweens.add({
+        targets: c, y: H + 20, rotation: c.rotation + Math.PI * 4,
+        duration: 3500 + Math.random() * 1500,
+        delay: Math.random() * 800,
+        ease: 'Linear',
+        onComplete: () => c.destroy(),
+      });
     }
+
+    // Card layout — 76% width, 460 tall to fit bigger fonts + inside-panel Trippie
+    const cw = W * 0.78, ch = 460, cx = W / 2, cy = H / 2;
+    // Pixel-art scoreboard frame replaces the code-drawn rect. v4 is the most
+    // minimal frame (corner dot accents only, no edge decoration). Tight padding.
+    const panel = this.add.image(cx, cy, 'scoreboard-frame')
+      .setDisplaySize(cw + 30, ch + 50)
+      .setDepth(141);
+    const panelSx = panel.scaleX;
+    const panelSy = panel.scaleY;
+    panel.setAlpha(0).setScale(panelSx * 0.7, panelSy * 0.7);
+    objs.push(panel);
+    this.tweens.add({
+      targets: panel, alpha: 1, scaleX: panelSx, scaleY: panelSy,
+      duration: 320, ease: 'Back.easeOut',
+    });
+
+    // Header — bigger gold text + small pulse
+    const header = this.add.text(cx, cy - ch / 2 + 38, cfg.isBonus ? '🚀 BONUS CLEAR!' : `LVL ${this.level} CLEARED`, {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '22px', color: '#FFD700',
+      stroke: '#000', strokeThickness: 5,
+    }).setOrigin(0.5).setDepth(143).setAlpha(0).setScale(0.8);
+    objs.push(header);
+    this.tweens.add({ targets: header, alpha: 1, scale: 1, duration: 350, delay: 150, ease: 'Back.easeOut' });
+
+    const flagText = this.add.text(cx, cy - ch / 2 + 72, `${cfg.flag} ${cfg.destination.toUpperCase()}`, {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '13px', color: '#00d2c8',
+    }).setOrigin(0.5).setDepth(143).setAlpha(0);
+    objs.push(flagText);
+    this.tweens.add({ targets: flagText, alpha: 1, duration: 280, delay: 350 });
+
+    // Trippie victory mascot — sits inside the panel below the country text,
+    // bouncing gently to anchor the celebration without crowding stats.
+    const victory = this.add.image(cx, cy - ch / 2 + 118, 'trippie-victory')
+      .setDepth(144);
+    victory.setDisplaySize(78, 52);
+    const vSx = victory.scaleX;
+    const vSy = victory.scaleY;
+    victory.setAlpha(0).setScale(0);
+    objs.push(victory);
+    this.tweens.add({
+      targets: victory, alpha: 1, scaleX: vSx, scaleY: vSy,
+      duration: 420, delay: 280, ease: 'Back.easeOut',
+    });
+    this.time.delayedCall(720, () => {
+      this.tweens.add({
+        targets: victory, y: victory.y - 3,
+        yoyo: true, repeat: -1, duration: 760, ease: 'Sine.easeInOut',
+      });
+    });
+
+    // Stat rows — bigger fonts, more breathing room
+    const statY = cy + 5;
+    const rowGap = 36;
+    const stats = [
+      { icon: '🪙', label: 'CURRENCIES', value: dotsThisLevel, color: '#FFD700' },
+      { icon: '👾', label: 'MONSTERS', value: ghostsThisLevel, color: '#FF6BB5' },
+      { icon: '⭐', label: 'LVL BONUS', value: levelBonus, prefix: '+', color: '#4FC3F7' },
+    ];
+    stats.forEach((s, i) => {
+      const y = statY + i * rowGap;
+      const labelText = this.add.text(cx - cw / 2 + 24, y, `${s.icon}  ${s.label}`, {
+        fontFamily: '"Press Start 2P", monospace',
+        fontSize: '13px', color: '#ffffff',
+      }).setOrigin(0, 0.5).setDepth(143).setAlpha(0);
+      objs.push(labelText);
+      const valText = this.add.text(cx + cw / 2 - 24, y, '0', {
+        fontFamily: '"Press Start 2P", monospace',
+        fontSize: '19px', color: s.color,
+        stroke: '#000', strokeThickness: 3,
+      }).setOrigin(1, 0.5).setDepth(143).setAlpha(0);
+      objs.push(valText);
+      const delay = 600 + i * 220;
+      this.tweens.add({ targets: [labelText, valText], alpha: 1, duration: 250, delay });
+      const obj = { v: 0 };
+      this.tweens.add({
+        targets: obj, v: s.value,
+        duration: 500, delay: delay + 50, ease: 'Cubic.easeOut',
+        onUpdate: () => valText.setText(`${s.prefix || ''}${Math.floor(obj.v)}`),
+        onComplete: () => {
+          valText.setText(`${s.prefix || ''}${s.value}`);
+          audioSystem.play('click');
+          this.tweens.add({ targets: valText, scale: 1.25, yoyo: true, duration: 180 });
+        },
+      });
+    });
+
+    // TOTAL row — divider + glowing total
+    const totalY = statY + stats.length * rowGap + 30;
+    const divider = this.add.rectangle(cx, totalY - 12, cw - 48, 2, 0x00d2c8, 0.5).setDepth(143).setAlpha(0);
+    objs.push(divider);
+    this.tweens.add({ targets: divider, alpha: 1, duration: 250, delay: 1300 });
+
+    const totalLabel = this.add.text(cx - cw / 2 + 24, totalY + 14, 'TOTAL', {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '15px', color: '#ffffff',
+    }).setOrigin(0, 0.5).setDepth(143).setAlpha(0);
+    objs.push(totalLabel);
+    this.tweens.add({ targets: totalLabel, alpha: 1, duration: 250, delay: 1400 });
+
+    // Glow effect — additive yellow rect behind total
+    const totalGlow = this.add.rectangle(cx + cw / 2 - 60, totalY + 14, 120, 36, 0xFFD700, 0)
+      .setDepth(142).setBlendMode(Phaser.BlendModes.ADD);
+    objs.push(totalGlow);
+
+    const totalText = this.add.text(cx + cw / 2 - 24, totalY + 14, `${this.levelStartScore}`, {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '28px', color: '#FFD700',
+      stroke: '#000', strokeThickness: 5,
+    }).setOrigin(1, 0.5).setDepth(144).setAlpha(0);
+    objs.push(totalText);
+    this.tweens.add({ targets: totalText, alpha: 1, duration: 250, delay: 1400 });
+
+    const totalObj = { v: this.levelStartScore };
+    this.tweens.add({
+      targets: totalObj, v: finalScore,
+      duration: 950, delay: 1500, ease: 'Cubic.easeOut',
+      onUpdate: () => totalText.setText(`${Math.floor(totalObj.v)}`),
+      onComplete: () => {
+        totalText.setText(`${finalScore}`);
+        // Big pulse + glow flash + emphatic pop
+        this.tweens.add({ targets: totalText, scale: 1.3, yoyo: true, duration: 200, ease: 'Sine.easeOut' });
+        this.tweens.add({ targets: totalGlow, alpha: 0.6, yoyo: true, duration: 250 });
+        audioSystem.play('power');
+      },
+    });
+
+    // Proceed button — bouncier entry
+    const btn = this.add.rectangle(cx, cy + ch / 2 - 32, cw - 60, 50, 0x00d2c8, 1)
+      .setDepth(143).setStrokeStyle(2, 0xffffff, 1).setAlpha(0).setScale(0.6);
+    objs.push(btn);
+    const btnLabel = this.add.text(cx, cy + ch / 2 - 32, 'NEXT TRIP →', {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '16px', color: '#0d0d1a',
+    }).setOrigin(0.5).setDepth(144).setAlpha(0);
+    objs.push(btnLabel);
+    this.tweens.add({ targets: [btn, btnLabel], alpha: 1, scale: 1, duration: 350, delay: 2500, ease: 'Back.easeOut' });
+    // Pulse the button so it reads as actionable
+    this.time.delayedCall(2900, () => {
+      this.tweens.add({ targets: btn, scaleX: 1.04, scaleY: 1.06, yoyo: true, repeat: -1, duration: 700 });
+    });
+
+    btn.setInteractive({ useHandCursor: true });
+    const proceed = () => {
+      btn.disableInteractive();
+      audioSystem.play('levelup');
+      this.tweens.add({
+        targets: objs,
+        alpha: 0,
+        duration: 200,
+        onComplete: () => {
+          objs.forEach(o => (o as any).destroy && (o as any).destroy());
+          const fromCode = getLevelConfig(this.level).cityCode;
+          this.level++;
+          const next = getLevelConfig(this.level);
+          // New 2-phase transition: stamp held long for readability, then plane wipe.
+          this.showLevelTransition(fromCode, next.cityCode, next.destination, next.flag);
+          this.transitionFreezeTimer = 3800;
+          this.startLevel();
+        },
+      });
+    };
+    btn.on('pointerdown', proceed);
+    // Also allow Enter/Space to proceed once button is visible
+    const keyHandler = (e: KeyboardEvent) => {
+      if ((e.key === 'Enter' || e.key === ' ') && this.gameState === 'scoreboard') {
+        document.removeEventListener('keydown', keyHandler);
+        proceed();
+      }
+    };
+    this.time.delayedCall(2400, () => {
+      document.addEventListener('keydown', keyHandler);
+    });
   }
 
   private updatePlaying(dt: number): void {
+    if (this.transitionFreezeTimer > 0) {
+      this.transitionFreezeTimer -= dt;
+      // Pause everything during the level-transition interstitial
+      return;
+    }
     if (this.invincibleTimer > 0) this.invincibleTimer -= dt;
     if (this.freezeTimer > 0) this.freezeTimer -= dt;
     if (this.boostTimer > 0) this.boostTimer -= dt;
@@ -507,6 +778,30 @@ export class GameScene extends Phaser.Scene {
     if (this.bonusLevelTimer > 0) {
       this.bonusLevelTimer -= dt;
       this.updateHUD();
+    }
+    // Combo decay
+    if (this.comboTimer > 0) {
+      this.comboTimer -= dt;
+      if (this.comboTimer <= 0) {
+        this.comboCount = 0;
+        if (this.comboText) { this.comboText.destroy(); this.comboText = undefined; }
+      } else {
+        const mult = Math.min(1 + Math.floor(this.comboCount / 5), 4);
+        if (mult > 1) {
+          if (!this.comboText) {
+            this.comboText = this.add.text(W / 2, HUD_HEIGHT + 32, `🔥 COMBO x${mult}`, {
+              fontFamily: '"Press Start 2P", monospace',
+              fontSize: '10px',
+              color: '#FF6BB5',
+              stroke: '#000000', strokeThickness: 3,
+            }).setOrigin(0.5, 0).setDepth(80);
+          } else {
+            this.comboText.setText(`🔥 COMBO x${mult}`);
+          }
+        } else if (this.comboText) {
+          this.comboText.destroy(); this.comboText = undefined;
+        }
+      }
     }
 
     // Bonus spawn
@@ -548,25 +843,36 @@ export class GameScene extends Phaser.Scene {
 
   private collectAtTile(col: number, row: number): void {
     const tile = this.map[row][col];
+    const cfg = getLevelConfig(this.level);
+    const bonusMult = cfg.isBonus ? 3 : 1;
     if (tile === DOT) {
       this.map[row][col] = EMPTY;
-      this.score += SCORE_DOT;
+      // Combo: chained dots within 1.5s build a multiplier (1x → 2x → 3x → 4x cap)
+      this.comboCount = Math.min(this.comboCount + 1, 50);
+      this.comboTimer = 1500;
+      const comboMult = Math.min(1 + Math.floor(this.comboCount / 5), 4);
+      const earned = SCORE_DOT * comboMult * bonusMult;
+      this.score += earned;
       this.dotsLeft--;
       this.totalDotsEaten++;
-      this.spawnScoreFloater(SCORE_DOT, col, row);
+      this.spawnScoreFloater(earned, col, row);
+      this.spawnCollectParticles(col, row, 0xffd700);
       audioSystem.play('dot');
       this.drawMaze();
     } else if (tile === POWER) {
       this.map[row][col] = EMPTY;
-      this.score += SCORE_POWER;
-      this.spawnScoreFloater(SCORE_POWER, col, row);
+      const earned = SCORE_POWER * bonusMult;
+      this.score += earned;
+      this.spawnScoreFloater(earned, col, row);
+      this.spawnCollectParticles(col, row, 0xff6bb5);
+      this.cameras.main.shake(120, 0.003);
       // Don't decrement dotsLeft — power pellets don't gate level-up
       this.powerTimer = POWER_DURATION;
       this.ghostScore = SCORE_GHOST_BASE;
       this.ghosts.forEach(g => {
         if (!g.eaten && !g.home && !g.respawning) g.scared = true;
       });
-      this.showPopup('CHOMP ON FEE MONSTERS!');
+      if (!cfg.isBonus) this.showPopup('CHOMP ON FEE MONSTERS!');
       audioSystem.play('power');
       this.drawMaze();
     }
@@ -593,8 +899,11 @@ export class GameScene extends Phaser.Scene {
 
       if (collected) {
         const type = this.bonusItem.type;
-        this.score += SCORE_BONUS;
-        this.spawnScoreFloater(SCORE_BONUS, this.player.col, this.player.row);
+        const earned = SCORE_BONUS * bonusMult;
+        this.score += earned;
+        this.spawnScoreFloater(earned, this.player.col, this.player.row);
+        this.spawnCollectParticles(this.player.col, this.player.row, 0xffb347);
+        this.cameras.main.shake(220, 0.008);
         this.bonusItem = null;
         if (type === 'boost') {
           this.boostTimer = BOOST_DURATION;
@@ -609,16 +918,16 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    const cfg = getLevelConfig(this.level);
     const levelEnd = cfg.isBonus
       ? this.bonusLevelTimer <= 0
       : this.dotsLeft <= 0;
     if (levelEnd) {
-      this.gameState = 'levelwin';
-      this.levelWinTimer = LEVEL_WIN_DURATION;
-      this.score += 500 * this.level;
-      this.showPopup(cfg.isBonus ? 'BONUS!' : 'LEVEL UP!');
+      this.gameState = 'scoreboard';
+      const bonus = 500 * this.level;
+      this.score += bonus;
+      this.spawnCelebration();
       audioSystem.play('levelup');
+      this.showScoreboard(bonus);
       this.updateHUD();
     }
     this.updateHUD();
@@ -633,6 +942,8 @@ export class GameScene extends Phaser.Scene {
           g.scared = false;
           this.score += this.ghostScore;
           this.spawnScoreFloater(this.ghostScore, g.col, g.row);
+          this.spawnCollectParticles(g.col, g.row, 0xff6bb5);
+          this.cameras.main.shake(140, 0.004);
           this.ghostScore *= 2;
           this.totalGhostsEaten++;
           audioSystem.play('ghost');
@@ -701,6 +1012,460 @@ export class GameScene extends Phaser.Scene {
 
   private dotFloaterCounter: number = 0;
 
+  private spawnCollectParticles(col: number, row: number, color: number): void {
+    const T = this.tileSize;
+    const cx = this.offsetX + col * T + T / 2;
+    const cy = this.offsetY + row * T + T / 2;
+    const N = 4;
+    for (let i = 0; i < N; i++) {
+      const angle = (Math.PI * 2 * i) / N + Math.random() * 0.4;
+      const dist = T * 0.6;
+      const dx = Math.cos(angle) * dist;
+      const dy = Math.sin(angle) * dist;
+      const p = this.add.circle(cx, cy, 2, color);
+      p.setDepth(45);
+      this.tweens.add({
+        targets: p,
+        x: cx + dx,
+        y: cy + dy,
+        alpha: 0,
+        scale: 0.2,
+        duration: 350,
+        ease: 'Cubic.easeOut',
+        onComplete: () => p.destroy(),
+      });
+    }
+  }
+
+  private spawnLevelBonusFly(amount: number): void {
+    // Big "+500" originates BELOW the LEVEL UP popup so they don't collide.
+    const big = this.add.text(W / 2, H / 2 + 80, `+${amount}`, {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '28px',
+      color: '#FFD700',
+      stroke: '#000000', strokeThickness: 5,
+    }).setOrigin(0.5).setDepth(110).setScale(0.2).setAlpha(0);
+    this.tweens.add({
+      targets: big,
+      alpha: 1,
+      scale: 1,
+      duration: 250,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: big,
+          x: 80,
+          y: HUD_HEIGHT + 8,
+          alpha: 0,
+          scale: 0.4,
+          duration: 600,
+          delay: 250,
+          ease: 'Cubic.easeIn',
+          onComplete: () => big.destroy(),
+        });
+      },
+    });
+
+    // Score number ticker — animate from old to new over ~1s.
+    const startScore = this.score;
+    const targetScore = startScore + amount;
+    const obj = { v: startScore };
+    this.tickingScore = true;
+    this.tweens.add({
+      targets: obj,
+      v: targetScore,
+      duration: 950,
+      delay: 350,
+      ease: 'Cubic.easeOut',
+      onUpdate: () => {
+        this.scoreText.setText(`SCORE: ${Math.floor(obj.v)}`);
+      },
+      onComplete: () => {
+        this.tickingScore = false;
+        this.scoreText.setText(`SCORE: ${this.score}`);
+      },
+    });
+  }
+
+  private spawnCelebration(): void {
+    // Confetti — 18 colored particles burst from player position upward.
+    const T = this.tileSize;
+    const cx = this.offsetX + this.player.col * T + T / 2;
+    const cy = this.offsetY + this.player.row * T + T / 2;
+    const colors = [0xffd700, 0xff6bb5, 0x4fc3f7, 0xffb347, 0x00d2c8];
+    for (let i = 0; i < 18; i++) {
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI;
+      const speed = 80 + Math.random() * 120;
+      const dx = Math.cos(angle) * speed;
+      const dy = Math.sin(angle) * speed;
+      const c = this.add.rectangle(cx, cy, 4, 4, colors[i % colors.length]);
+      c.setDepth(105);
+      c.setRotation(Math.random() * Math.PI);
+      this.tweens.add({
+        targets: c,
+        x: cx + dx,
+        y: cy + dy + 60, // gravity
+        rotation: c.rotation + Math.PI * 2,
+        alpha: 0,
+        duration: 900 + Math.random() * 300,
+        ease: 'Quad.easeOut',
+        onComplete: () => c.destroy(),
+      });
+    }
+    // Trippie celebration jump — quick scale bounce
+    this.tweens.add({
+      targets: this.playerSprite,
+      scale: this.playerSprite.scale * 1.4,
+      yoyo: true,
+      duration: 250,
+      ease: 'Sine.easeOut',
+    });
+  }
+
+  /**
+   * Two-phase level transition:
+   *  Phase A (0–2600ms): boarding stamp/destination reveal — held long enough to read
+   *  Phase B (2600–3800ms): plane wipe across screen with contrail (transition out)
+   * Caller sets transitionFreezeTimer to 3800.
+   */
+  showLevelTransition(fromCode: string, toCode: string, destinationName: string, flag: string): void {
+    const objs: Phaser.GameObjects.GameObject[] = [];
+
+    // Dark cosmic overlay
+    const overlay = this.add.rectangle(W / 2, H / 2, W, H, 0x0a0a1a, 0).setDepth(120);
+    objs.push(overlay);
+    this.tweens.add({ targets: overlay, alpha: 0.92, duration: 240 });
+
+    // Twinkle stars
+    for (let i = 0; i < 35; i++) {
+      const star = this.add.rectangle(Math.random() * W, Math.random() * H, 2, 2, 0xffffff, 0.7).setDepth(121);
+      objs.push(star);
+      this.tweens.add({ targets: star, alpha: 0.15, yoyo: true, repeat: -1, duration: 400 + Math.random() * 600 });
+    }
+
+    // ===== Phase A: Boarding stamp slams in (250ms-2600ms hold) =====
+    // Brand purple card with cyan border
+    const cardW = W * 0.84, cardH = 240;
+    const cardBg = this.add.rectangle(W / 2, H / 2, cardW, cardH, 0x2a1845, 0.97)
+      .setDepth(124).setStrokeStyle(3, 0x00d2c8, 1).setAlpha(0).setScale(0.6).setRotation(-0.05);
+    objs.push(cardBg);
+    this.tweens.add({ targets: cardBg, alpha: 1, scale: 1, rotation: 0, duration: 350, ease: 'Back.easeOut' });
+
+    // Header: BOARDING / NEXT STOP
+    const header = this.add.text(W / 2, H / 2 - cardH / 2 + 28, 'NEXT STOP', {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '11px', color: '#00d2c8',
+    }).setOrigin(0.5).setDepth(125).setAlpha(0);
+    objs.push(header);
+    this.tweens.add({ targets: header, alpha: 1, duration: 280, delay: 200 });
+
+    // Big flag + destination name (NOT just city code)
+    const big = this.add.text(W / 2, H / 2 - 10, destinationName.toUpperCase(), {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: destinationName.length > 8 ? '24px' : '32px',
+      color: '#FFD700',
+      stroke: '#000', strokeThickness: 5,
+    }).setOrigin(0.5).setDepth(125).setAlpha(0).setScale(0.6);
+    objs.push(big);
+    this.tweens.add({ targets: big, alpha: 1, scale: 1, duration: 350, delay: 350, ease: 'Back.easeOut' });
+
+    const flagText = this.add.text(W / 2, H / 2 + 32, `${flag} ${toCode}`, {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '18px', color: '#FFFFFF',
+      stroke: '#2a1845', strokeThickness: 4,
+    }).setOrigin(0.5).setDepth(125).setAlpha(0);
+    objs.push(flagText);
+    this.tweens.add({ targets: flagText, alpha: 1, duration: 280, delay: 600 });
+
+    // Route ribbon under the card
+    const ribbonY = H / 2 + cardH / 2 - 32;
+    const fromText = this.add.text(W / 2 - 80, ribbonY, fromCode, {
+      fontFamily: '"Press Start 2P", monospace', fontSize: '11px', color: '#00d2c8',
+    }).setOrigin(0.5).setDepth(125).setAlpha(0);
+    objs.push(fromText);
+    const arrowText = this.add.text(W / 2, ribbonY, '→', {
+      fontFamily: 'monospace', fontSize: '20px', color: '#FFD700',
+    }).setOrigin(0.5).setDepth(125).setAlpha(0);
+    objs.push(arrowText);
+    const toText = this.add.text(W / 2 + 80, ribbonY, toCode, {
+      fontFamily: '"Press Start 2P", monospace', fontSize: '11px', color: '#FFD700',
+    }).setOrigin(0.5).setDepth(125).setAlpha(0);
+    objs.push(toText);
+    this.tweens.add({ targets: [fromText, arrowText, toText], alpha: 1, duration: 350, delay: 800 });
+
+    // Stamp shake on slam
+    this.cameras.main.shake(220, 0.008);
+
+    // ===== Phase B: Plane wipe across (starts ~2600ms) =====
+    this.time.delayedCall(2600, () => {
+      // Fade card down so plane gets focus
+      this.tweens.add({ targets: [cardBg, header, big, flagText, fromText, arrowText, toText], alpha: 0, duration: 250 });
+
+      // Plane streaks across with a particle contrail
+      const plane = this.add.image(-100, H * 0.5, 'plane-side').setDepth(123);
+      plane.setScale(190 / plane.width).setAlpha(1);
+      objs.push(plane);
+      this.tweens.add({ targets: plane, x: W + 100, duration: 1100, ease: 'Sine.easeInOut' });
+
+      const contrail = this.time.addEvent({
+        delay: 30, repeat: 35,
+        callback: () => {
+          const p = this.add.rectangle(plane.x - 30, plane.y + 4, 4, 4, 0xffffff, 0.8).setDepth(122);
+          objs.push(p);
+          this.tweens.add({
+            targets: p, alpha: 0, scale: 0.3, duration: 700,
+            ease: 'Cubic.easeOut', onComplete: () => p.destroy(),
+          });
+        },
+      });
+      objs.push(contrail as any);
+    });
+
+    // Final fade-out at 3800ms (covers the new level fade-in)
+    this.time.delayedCall(3700, () => {
+      this.tweens.add({
+        targets: objs.filter(o => 'alpha' in (o as any)),
+        alpha: 0, duration: 300,
+        onComplete: () => objs.forEach(o => (o as any).destroy && (o as any).destroy()),
+      });
+    });
+  }
+
+  showFlightInterstitial(fromCode: string, toCode: string, destinationName: string, flag: string): void {
+    // 2.2s sequence with brand polish:
+    //  - Dark overlay + twinkle stars
+    //  - Plane flies left→right with particle contrail
+    //  - Route ribbon below plane: SIN → TYO with arrow drawing in
+    //  - City code centerpiece slams down with brand-colored stamp + letter flip
+    //  - Camera shake on slam
+    const objs: Phaser.GameObjects.GameObject[] = [];
+    const overlay = this.add.rectangle(W / 2, H / 2, W, H, 0x0a0a1a, 0).setDepth(120);
+    objs.push(overlay);
+    this.tweens.add({ targets: overlay, alpha: 0.88, duration: 200 });
+
+    // Twinkle stars
+    for (let i = 0; i < 35; i++) {
+      const star = this.add.rectangle(Math.random() * W, Math.random() * H, 2, 2, 0xffffff, 0.7).setDepth(121);
+      objs.push(star);
+      this.tweens.add({
+        targets: star, alpha: 0.15, yoyo: true, repeat: -1,
+        duration: 400 + Math.random() * 600,
+      });
+    }
+
+    // Plane + contrail particle emitter
+    const plane = this.add.image(-100, H * 0.32, 'plane-side').setDepth(123);
+    plane.setScale(170 / plane.width).setAlpha(1);
+    objs.push(plane);
+
+    // Particle contrail behind plane — spawn small white pixels every frame
+    const contrail = this.time.addEvent({
+      delay: 35,
+      repeat: 50,
+      callback: () => {
+        const p = this.add.rectangle(plane.x - 30, plane.y + 4, 3, 3, 0xffffff, 0.7).setDepth(122);
+        objs.push(p);
+        this.tweens.add({
+          targets: p,
+          alpha: 0,
+          scale: 0.3,
+          duration: 700,
+          ease: 'Cubic.easeOut',
+          onComplete: () => p.destroy(),
+        });
+      },
+    });
+    objs.push(contrail as any);
+
+    // Route ribbon below plane
+    const ribbonY = plane.y + 56;
+    const fromText = this.add.text(60, ribbonY, fromCode, {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '13px', color: '#FFD700',
+      stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0, 0.5).setDepth(123).setAlpha(0);
+    objs.push(fromText);
+    const toText = this.add.text(W - 60, ribbonY, toCode, {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '13px', color: '#FFD700',
+      stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(1, 0.5).setDepth(123).setAlpha(0);
+    objs.push(toText);
+    const arrow = this.add.text(W / 2, ribbonY, '→', {
+      fontFamily: 'monospace', fontSize: '24px', color: '#00d2c8',
+      stroke: '#000000', strokeThickness: 4,
+    }).setOrigin(0.5).setDepth(123).setAlpha(0).setScale(0.5);
+    objs.push(arrow);
+    this.tweens.add({ targets: [fromText, toText], alpha: 1, duration: 300, delay: 250 });
+    this.tweens.add({ targets: arrow, alpha: 1, scale: 1, duration: 350, delay: 600, ease: 'Back.easeOut' });
+
+    // Plane scroll
+    this.tweens.add({
+      targets: plane,
+      x: W + 100,
+      duration: 1700,
+      delay: 200,
+      ease: 'Sine.easeInOut',
+    });
+
+    // City code slam — brand-colored card + letter flip
+    this.time.delayedCall(1500, () => {
+      const slamY = H / 2 + 40;
+      // Brand purple card behind the code (using Rectangle GameObject for clean positioning)
+      const cardBg = this.add.rectangle(W / 2, slamY, W * 0.7, 130, 0x2a1845, 0.95)
+        .setDepth(124).setStrokeStyle(3, 0x00d2c8, 1).setAlpha(0).setScale(0.7);
+      objs.push(cardBg);
+      this.tweens.add({ targets: cardBg, alpha: 1, scale: 1, duration: 250, ease: 'Back.easeOut' });
+
+      // City code letters fly in one by one
+      const letterStartX = W / 2 - (toCode.length * 28) / 2 + 14;
+      toCode.split('').forEach((ch, i) => {
+        const letter = this.add.text(letterStartX + i * 28, slamY - 18, ch, {
+          fontFamily: '"Press Start 2P", monospace',
+          fontSize: '40px',
+          color: '#FFD700',
+          stroke: '#2a1845', strokeThickness: 5,
+        }).setOrigin(0.5).setDepth(125).setScale(3).setAlpha(0).setRotation(-0.3);
+        objs.push(letter);
+        this.tweens.add({
+          targets: letter,
+          scale: 1, alpha: 1, rotation: 0,
+          duration: 250, delay: i * 80,
+          ease: 'Back.easeOut',
+        });
+      });
+
+      // Subtitle
+      const sub = this.add.text(W / 2, slamY + 32, `${flag}  ${destinationName.toUpperCase()}`, {
+        fontFamily: '"Press Start 2P", monospace',
+        fontSize: '11px', color: '#00d2c8',
+        stroke: '#000000', strokeThickness: 3,
+      }).setOrigin(0.5).setDepth(125).setAlpha(0);
+      objs.push(sub);
+      this.tweens.add({ targets: sub, alpha: 1, duration: 250, delay: 350 });
+
+      this.cameras.main.shake(220, 0.008);
+    });
+
+    // Auto-fade after 2.2s
+    this.time.delayedCall(2200, () => {
+      this.tweens.add({
+        targets: objs.filter(o => 'alpha' in (o as any)),
+        alpha: 0,
+        duration: 250,
+        onComplete: () => objs.forEach(o => (o as any).destroy && (o as any).destroy()),
+      });
+    });
+  }
+
+  showBoardingPass(style: 'card' | 'departure' | 'stamp', destinationName: string, cityCode: string, flag: string): Phaser.GameObjects.GameObject[] {
+    const objs: Phaser.GameObjects.GameObject[] = [];
+    const overlay = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.7).setDepth(120);
+    objs.push(overlay);
+
+    if (style === 'card') {
+      // Boarding pass ticket — beige card with route, dotted tear edge.
+      const card = this.add.graphics().setDepth(121);
+      const cw = W * 0.85, ch = 230, cx = (W - cw) / 2, cy = H / 2 - ch / 2;
+      card.fillStyle(0xf5e8c9, 1);
+      card.fillRoundedRect(cx, cy, cw, ch, 8);
+      card.lineStyle(2, 0x2a1845, 1);
+      card.strokeRoundedRect(cx, cy, cw, ch, 8);
+      // Tear-off perforation line
+      card.lineStyle(1, 0x2a1845, 0.5);
+      const perfX = cx + cw * 0.7;
+      for (let y = cy + 10; y < cy + ch - 10; y += 8) {
+        card.lineBetween(perfX, y, perfX, y + 4);
+      }
+      objs.push(card);
+      objs.push(this.add.text(cx + 18, cy + 18, 'YOUTRIP AIRLINES', { fontFamily: '"Press Start 2P", monospace', fontSize: '8px', color: '#2a1845' }).setDepth(121));
+      objs.push(this.add.text(cx + 18, cy + 50, 'SIN', { fontFamily: '"Press Start 2P", monospace', fontSize: '32px', color: '#2a1845' }).setDepth(121));
+      objs.push(this.add.text(cx + 18 + 90, cy + 60, '✈', { fontSize: '28px', color: '#00d2c8' }).setDepth(121));
+      objs.push(this.add.text(cx + 18 + 140, cy + 50, cityCode, { fontFamily: '"Press Start 2P", monospace', fontSize: '32px', color: '#2a1845' }).setDepth(121));
+      objs.push(this.add.text(cx + 18, cy + 110, `${flag}  ${destinationName.toUpperCase()}`, { fontFamily: '"Press Start 2P", monospace', fontSize: '14px', color: '#d4a017' }).setDepth(121));
+      objs.push(this.add.text(cx + 18, cy + 145, 'GATE A23   SEAT 1A', { fontFamily: '"Press Start 2P", monospace', fontSize: '8px', color: '#2a1845' }).setDepth(121));
+      objs.push(this.add.text(cx + 18, cy + 165, 'BOARDING NOW', { fontFamily: '"Press Start 2P", monospace', fontSize: '10px', color: '#c54128' }).setDepth(121));
+      objs.push(this.add.text(perfX + 18, cy + 50, cityCode, { fontFamily: '"Press Start 2P", monospace', fontSize: '20px', color: '#2a1845' }).setDepth(121));
+      objs.push(this.add.text(perfX + 18, cy + 80, '1A', { fontFamily: '"Press Start 2P", monospace', fontSize: '24px', color: '#2a1845' }).setDepth(121));
+    } else if (style === 'departure') {
+      // Split-flap departure board — black bg, amber chars
+      const board = this.add.graphics().setDepth(121);
+      const bw = W * 0.88, bh = 200, bx = (W - bw) / 2, by = H / 2 - bh / 2;
+      board.fillStyle(0x111111, 1).fillRoundedRect(bx, by, bw, bh, 4);
+      board.lineStyle(2, 0xffb347, 1).strokeRoundedRect(bx, by, bw, bh, 4);
+      objs.push(board);
+      objs.push(this.add.text(bx + 14, by + 14, 'DEPARTURES', { fontFamily: '"Press Start 2P", monospace', fontSize: '10px', color: '#ffb347' }).setDepth(121));
+      objs.push(this.add.text(bx + bw - 14, by + 14, '──', { fontFamily: '"Press Start 2P", monospace', fontSize: '10px', color: '#ffb347' }).setOrigin(1, 0).setDepth(121));
+      objs.push(this.add.text(bx + bw / 2, by + 60, `${flag}  ${destinationName.toUpperCase()}`, { fontFamily: '"Press Start 2P", monospace', fontSize: '20px', color: '#ffb347' }).setOrigin(0.5).setDepth(121));
+      objs.push(this.add.text(bx + bw / 2, by + 100, `FLT YT${100 + this.level}    ${cityCode}`, { fontFamily: '"Press Start 2P", monospace', fontSize: '12px', color: '#ffd700' }).setOrigin(0.5).setDepth(121));
+      const status = this.add.text(bx + bw / 2, by + 140, 'BOARDING', { fontFamily: '"Press Start 2P", monospace', fontSize: '14px', color: '#5cf07a' }).setOrigin(0.5).setDepth(121);
+      objs.push(status);
+      this.tweens.add({ targets: status, alpha: 0.3, yoyo: true, repeat: -1, duration: 400 });
+    } else {
+      // Passport stamp slam
+      const passport = this.add.graphics().setDepth(121);
+      const pw = W * 0.7, ph = 240, px = (W - pw) / 2, py = H / 2 - ph / 2;
+      passport.fillStyle(0x4a2e1f, 1).fillRoundedRect(px, py, pw, ph, 6);
+      passport.fillStyle(0xf5e8c9, 1).fillRoundedRect(px + 12, py + 12, pw - 24, ph - 24, 4);
+      passport.lineStyle(1, 0xd4a017, 1).strokeRoundedRect(px + 12, py + 12, pw - 24, ph - 24, 4);
+      objs.push(passport);
+      objs.push(this.add.text(px + pw / 2, py + 30, 'PASSPORT', { fontFamily: '"Press Start 2P", monospace', fontSize: '10px', color: '#4a2e1f' }).setOrigin(0.5).setDepth(121));
+      // The stamp — starts huge + transparent, slams to size + opaque
+      const stamp = this.add.container(W / 2, H / 2 + 20).setDepth(123);
+      const stampBg = this.add.graphics();
+      stampBg.fillStyle(0xc54128, 0.88);
+      stampBg.fillRoundedRect(-100, -50, 200, 100, 8);
+      stampBg.lineStyle(3, 0xc54128, 1);
+      stampBg.strokeRoundedRect(-100, -50, 200, 100, 8);
+      stamp.add(stampBg);
+      stamp.add(this.add.text(0, -20, `${flag} ${cityCode}`, { fontFamily: '"Press Start 2P", monospace', fontSize: '22px', color: '#ffffff' }).setOrigin(0.5));
+      stamp.add(this.add.text(0, 12, destinationName.toUpperCase(), { fontFamily: '"Press Start 2P", monospace', fontSize: '10px', color: '#ffffff' }).setOrigin(0.5));
+      stamp.add(this.add.text(0, 32, 'ARRIVED', { fontFamily: '"Press Start 2P", monospace', fontSize: '8px', color: '#ffffff' }).setOrigin(0.5));
+      stamp.setScale(3).setAlpha(0).setRotation(-0.2);
+      this.tweens.add({ targets: stamp, scale: 1, alpha: 1, rotation: -0.08, duration: 250, ease: 'Back.easeOut' });
+      this.tweens.add({ targets: stamp, scale: 1.06, yoyo: true, duration: 80, delay: 250 });
+      this.cameras.main.shake(120, 0.005, false, undefined, true);
+      objs.push(stamp);
+    }
+
+    // Auto-fade after 1.7s
+    this.time.delayedCall(1700, () => {
+      this.tweens.add({
+        targets: objs,
+        alpha: 0,
+        duration: 250,
+        onComplete: () => objs.forEach(o => o.destroy()),
+      });
+    });
+    return objs;
+  }
+
+  private showBonusIntro(): void {
+    const overlay = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.6).setDepth(120);
+    const headline = this.add.text(W / 2, H / 2 - 24, 'BONUS LEVEL', {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '22px',
+      color: '#FFD700',
+      stroke: '#000000',
+      strokeThickness: 4,
+    }).setOrigin(0.5).setDepth(121);
+    const sub = this.add.text(W / 2, H / 2 + 14, 'SURVIVE 30s · POINTS x3', {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '11px',
+      color: '#FFFFFF',
+      stroke: '#000000',
+      strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(121);
+    this.time.delayedCall(1700, () => {
+      this.tweens.add({
+        targets: [overlay, headline, sub],
+        alpha: 0,
+        duration: 250,
+        onComplete: () => { overlay.destroy(); headline.destroy(); sub.destroy(); },
+      });
+    });
+  }
+
   private spawnScoreFloater(amount: number, col: number, row: number): void {
     // Throttle small dot floaters — only show every 5th dot collected so we
     // don't drown the screen in rising numbers.
@@ -736,11 +1501,50 @@ export class GameScene extends Phaser.Scene {
     const cfg = getLevelConfig(this.level);
     if (cfg.isBonus && this.bonusLevelTimer > 0) {
       const sec = Math.ceil(this.bonusLevelTimer / 1000);
-      this.scoreText.setText(`BONUS: ${sec}s`);
-      this.levelText.setText(`SCORE: ${this.score}`);
-    } else {
-      this.scoreText.setText(`SCORE: ${this.score}`);
+      if (!this.tickingScore) this.scoreText.setText(`SCORE: ${this.score}`);
       this.levelText.setText(`LVL: ${this.level}`);
+      // Bonus timer below the maze in the bg-reveal strip — large, prominent.
+      if (!this.bonusTimerText) {
+        const timerY = this.offsetY + ROWS * this.tileSize + 30;
+        this.bonusTimerText = this.add.text(W / 2, timerY, '', {
+          fontFamily: '"Press Start 2P", monospace',
+          fontSize: '32px',
+          color: '#FFD700',
+          stroke: '#000000', strokeThickness: 6,
+          align: 'center',
+        }).setOrigin(0.5).setDepth(82);
+        this.bonusTimerLabel = this.add.text(W / 2, timerY + 26, '3x POINTS', {
+          fontFamily: '"Press Start 2P", monospace',
+          fontSize: '10px',
+          color: '#FF6BB5',
+          stroke: '#000000', strokeThickness: 3,
+        }).setOrigin(0.5).setDepth(82);
+      }
+      this.bonusTimerText.setText(`${sec}s`);
+      this.bonusTimerText.setVisible(true);
+      this.bonusTimerLabel?.setVisible(true);
+      // Last-5s urgency: pulse + red on each second tick
+      if (this.lastBonusSec !== sec) {
+        this.lastBonusSec = sec;
+        if (sec <= 5) {
+          this.bonusTimerText.setColor('#FF3838');
+          this.tweens.killTweensOf(this.bonusTimerText);
+          this.bonusTimerText.setScale(1);
+          this.tweens.add({
+            targets: this.bonusTimerText,
+            scale: 1.45, yoyo: true, duration: 220, ease: 'Sine.easeOut',
+          });
+          audioSystem.play('click');
+        } else {
+          this.bonusTimerText.setColor('#FFD700');
+        }
+      }
+    } else {
+      if (!this.tickingScore) this.scoreText.setText(`SCORE: ${this.score}`);
+      this.levelText.setText(`LVL: ${this.level}`);
+      if (this.bonusTimerText) this.bonusTimerText.setVisible(false);
+      if (this.bonusTimerLabel) this.bonusTimerLabel.setVisible(false);
+      this.lastBonusSec = -1;
     }
 
     this.livesContainer.removeAll(true);
@@ -750,6 +1554,26 @@ export class GameScene extends Phaser.Scene {
       life.setOrigin(1, 0);
       this.livesContainer.add(life);
     }
+  }
+
+  private startMazeScanline(): void {
+    // 5s cycle: scanline starts at top of maze, sweeps to bottom while fading
+    // in then out. Mid-sweep alpha peak ~0.22 (subtle).
+    const sweep = () => {
+      const yTop = this.offsetY;
+      const yBot = this.offsetY + ROWS * this.tileSize;
+      this.mazeScanline.setPosition(W / 2, yTop).setAlpha(0);
+      this.tweens.add({
+        targets: this.mazeScanline, y: yBot,
+        duration: 4200, ease: 'Linear',
+        onComplete: () => this.time.delayedCall(900, sweep),
+      });
+      this.tweens.add({
+        targets: this.mazeScanline, alpha: 0.22,
+        duration: 700, hold: 2800, yoyo: true, ease: 'Sine.easeInOut',
+      });
+    };
+    sweep();
   }
 
   private drawMaze(): void {
@@ -789,8 +1613,11 @@ export class GameScene extends Phaser.Scene {
             this.mazeGraphics.lineBetween(x + T, y, x + T, y + T);
           }
         } else if (t === DOT) {
-          this.mazeGraphics.fillStyle(COLOR_DOT, 1);
-          this.mazeGraphics.fillCircle(x + half, y + half, T * 0.12);
+          // Soft outer glow + bright core — pops against any bg
+          this.mazeGraphics.fillStyle(COLOR_DOT, 0.35);
+          this.mazeGraphics.fillCircle(x + half, y + half, T * 0.22);
+          this.mazeGraphics.fillStyle(0xFFFFAA, 1);
+          this.mazeGraphics.fillCircle(x + half, y + half, T * 0.16);
         } else if (t === GATE) {
           this.mazeGraphics.fillStyle(COLOR_GATE, 1);
           this.mazeGraphics.fillRect(x, y + half - 1.5, T, 3);
@@ -924,7 +1751,16 @@ export class GameScene extends Phaser.Scene {
       const gs = this.ghostSprites[i];
 
       if (g.respawning) {
-        gs.setVisible(false);
+        // Keep the X-eyed "eaten" sprite visible while ghost recovers in pen.
+        const T = this.tileSize;
+        const half = T / 2;
+        const targetSize = T * 1.9;
+        gs.setTexture(g.spriteKey + '-dead');
+        gs.setPosition(this.offsetX + g.px * T + half, this.offsetY + g.py * T + half);
+        const scale = targetSize / Math.max(gs.width, gs.height);
+        gs.setScale(scale);
+        gs.setAlpha(0.55);
+        gs.setVisible(true);
         continue;
       }
 

@@ -41,8 +41,15 @@ export class PreloadScene extends Phaser.Scene {
     // Game-over background (used by GameOverScene + ShareImage canvas source)
     this.load.image('game-over-bg', 'assets/game-over-bg.webp');
 
-    // Per-destination level backgrounds — driven by LEVELS config
+    // Scoreboard polish — pixel-art frame + Trippie victory sprite
+    this.load.image('scoreboard-frame', 'assets/scoreboard-frame.webp');
+    this.load.image('trippie-victory', 'assets/sprite-trippie-victory.webp');
+
+    // Per-destination level backgrounds — driven by LEVELS config (deduped)
+    const seen = new Set<string>();
     for (const level of LEVELS) {
+      if (seen.has(level.bgAsset)) continue;
+      seen.add(level.bgAsset);
       this.load.image(level.bgAsset, `assets/${level.bgAsset}.webp`);
     }
   }

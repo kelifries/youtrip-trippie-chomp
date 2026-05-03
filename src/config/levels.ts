@@ -123,16 +123,16 @@ export const LEVELS: LevelConfig[] = [
     shareHeadline: 'Trippie made it to Bangkok',
   },
   {
-    id: 'lounge',
-    destination: 'First Class Lounge',
-    country: 'Transit',
-    cityCode: 'TRX',
-    flag: '\u{1F37E}', // bottle-with-popping-cork (transit-celebration vibe)
-    bgAsset: 'bg-lounge',
+    id: 'space',
+    destination: 'Outer Space',
+    country: 'Cosmos',
+    cityCode: 'SPC',
+    flag: '\u{1F680}', // rocket
+    bgAsset: 'bg-space',
     mazeKey: 'lounge',
     isBonus: true,
-    palette: { wall: 0x2a1f08, wallBorder: 0xffc94a, dotAccent: 0xffd966 },
-    shareHeadline: 'Trippie hit the first-class lounge',
+    palette: { wall: 0x0a0a1a, wallBorder: 0x4FC3F7, dotAccent: 0xFFFFFF },
+    shareHeadline: 'Trippie blasted off to space',
   },
   {
     id: 'kr-seoul',

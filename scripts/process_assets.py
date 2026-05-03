@@ -15,7 +15,7 @@ REPO = Path(__file__).resolve().parent.parent
 GENERATED = REPO / "generated"
 ASSETS = REPO / "public" / "assets"
 
-DESTINATIONS = ["sg-airport", "jp-tokyo", "th-bangkok", "lounge", "kr-seoul", "my-kl", "au-sydney"]
+DESTINATIONS = ["sg-airport", "jp-tokyo", "th-bangkok", "lounge", "kr-seoul", "my-kl", "au-sydney", "space"]
 
 # Per-destination dark navy fallback for the IG Story padding (matches the bg sky tone).
 SHARE_BG_COLOR = {
@@ -26,6 +26,7 @@ SHARE_BG_COLOR = {
     "kr-seoul":   (16, 14, 40),
     "my-kl":      (12, 28, 36),
     "au-sydney":  (10, 16, 36),
+    "space":      (4, 4, 16),
 }
 
 
@@ -46,17 +47,19 @@ def process_bg(name: str) -> None:
         print(f"  SKIP bg-{name}: source missing")
         return
     im = Image.open(src).convert("RGB")
-    sky = sample_top_color(im)
 
-    # Pad TOP modestly so content sits in bottom 2/3 of canvas — bg detail
-    # shows BEHIND the maze AND below it (so the level feels integrated, not
-    # two stacked panels). Source 1024×1024, pad = 512 → 1024×1536 → 480×720.
-    pad = im.height // 2
-    canvas = Image.new("RGB", (im.width, im.height + pad), sky)
-    canvas.paste(im, (0, pad))
-
-    # Resize to spec: 480x720
-    final = canvas.resize((480, 720), Image.LANCZOS)
+    if name == "space":
+        # Space bg: scale up to fill 480×720 fully, center-crop horizontally.
+        # 1024×1024 → scale to 720 height = 720×720 → crop center to 480×720.
+        scaled = im.resize((720, 720), Image.LANCZOS)
+        left = (720 - 480) // 2
+        final = scaled.crop((left, 0, left + 480, 720))
+    else:
+        sky = sample_top_color(im)
+        pad = im.height // 2
+        canvas = Image.new("RGB", (im.width, im.height + pad), sky)
+        canvas.paste(im, (0, pad))
+        final = canvas.resize((480, 720), Image.LANCZOS)
 
     out = ASSETS / f"bg-{name}.webp"
     final.save(out, "WEBP", quality=85, method=6)

@@ -35,7 +35,7 @@ export function getGhostBaseSpeed(level: number): number {
 // Timers (in ms)
 export const POWER_DURATION = 7000;
 export const POWER_FLASH_THRESHOLD = 1500;
-export const GHOST_RESPAWN_DELAY = 1500;
+export const GHOST_RESPAWN_DELAY = 5000;  // 5s — eaten ghosts serve real time before re-entering chase
 export const INVINCIBLE_DURATION = 2000;
 export const DYING_DURATION = 1000; // 60 ticks * 16.67ms
 export const LEVEL_WIN_DURATION = 800; // Quick transition between levels

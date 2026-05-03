@@ -305,23 +305,29 @@ def build_l2_tokyo() -> list[list[int]]:
     for r, cs in [(2, [9]), (3, [8, 9, 10])]:
         for c in cs:
             g[r][c] = 1
-    # Top half — minimal pillars, easy navigation
+    # Top half — modest pillars + 2 standalone blocks for variety
     walls_top = [
-        (5, [3, 4, 5, 13, 14, 15]),     # 2 horizontal pillars
-        (6, [9]),                         # single center pillar
+        (4, [9]),                          # below Fuji
+        (5, [3, 4, 5, 13, 14, 15]),
+        (5, [9]),
+        (6, [9]),
         (7, [3, 4, 5, 13, 14, 15]),
+        (7, [7, 11]),                       # extra pillar pair near pen
     ]
     for r, cs in walls_top:
         for c in cs:
             g[r][c] = 1
     # Pen
     stamp_pen(g, top_row=8)
-    # Bottom half — mirror of top, simple
+    # Bottom half — mirror with one extra row of pillars
     walls_bot = [
         (12, [3, 4, 5, 13, 14, 15]),
+        (12, [7, 11]),                      # extra pillar pair
         (13, [9]),
         (14, [3, 4, 5, 13, 14, 15]),
-        (17, [4, 5, 6, 12, 13, 14]),     # Big horizontal block
+        (14, [9]),
+        (16, [6, 7, 11, 12]),               # mid-block bar
+        (17, [4, 5, 14, 15]),
     ]
     for r, cs in walls_bot:
         for c in cs:
@@ -329,41 +335,40 @@ def build_l2_tokyo() -> list[list[int]]:
     fill_dots(g)
     g[9][8] = 0; g[9][9] = 0; g[9][10] = 0
     open_side_tunnel(g, 9)
-    clear_transit_lanes(g, cols=(1, 17), rows=(11,))
-    # Power pellets — Fuji-themed placement
-    g[1][9] = 3            # above Fuji peak
-    g[5][1] = 3            # left of upper pillar
-    g[5][17] = 3           # right of upper pillar
-    g[19][9] = 3           # bottom-center
+    # Tokyo is meant to be easier than classic Pacman — strip lots of lanes
+    clear_transit_lanes(g, cols=(1, 2, 16, 17), rows=(4, 11, 15, 16, 18, 19))
+    g[1][9] = 3
+    g[5][1] = 3
+    g[5][17] = 3
+    g[19][9] = 3
     clear_unreachable(g, 19, 9)
     return g
 
 
 def build_l3_bangkok() -> list[list[int]]:
-    """L3 Bangkok — asymmetric river-meander wall pattern, denser than silhouettes.
-    Hint of Wat Arun via small triple-pip top accent."""
+    """L3 Bangkok — open meander pattern, no dead-ends. Walls form
+    horizontal/vertical bars only, with all corridors connecting back to a loop."""
     g = empty_grid_with_border()
-    # Tiny spire accent — three small pips top center
-    for r, cs in [(2, [9]), (2, [5, 13])]:
+    # Three temple spire pips top center
+    for r, cs in [(2, [5, 9, 13])]:
         for c in cs:
             g[r][c] = 1
-    # Asymmetric meandering corridors — uneven left/right wall shapes
+    # Symmetric horizontal bars — all corridors loop back through outer ring
     walls = [
-        (3, [2, 3, 4, 7, 11, 14, 15, 16]),
-        (4, [2, 7, 11, 16]),
-        (5, [2, 4, 5, 6, 7, 11, 12, 13, 14, 16]),
-        (6, [2, 4, 14, 16]),
-        (6, [8, 10]),
-        (7, [2, 4, 5, 6, 12, 13, 14, 16]),
+        # Top zone — long horizontal bars
+        (4, [3, 4, 5, 13, 14, 15]),       # left + right horizontal slabs
+        (4, [8, 9, 10]),                   # center slab
+        (6, [3, 4, 5, 6, 12, 13, 14, 15]), # wider bars
+        (6, [9]),                           # center divider gap
         # Pen rows 8-10 (stamped via stamp_pen)
-        (12, [2, 4, 5, 6, 12, 13, 14, 16]),
-        (13, [2, 4, 14, 16]),
-        (13, [8, 10]),
-        (14, [2, 4, 5, 6, 7, 11, 12, 13, 14, 16]),
-        (15, [2, 7, 11, 16]),
-        (16, [2, 3, 4, 7, 11, 14, 15, 16]),
-        (18, [4, 5, 6, 12, 13, 14]),
-        (18, [8, 9, 10]),
+        # Bottom zone — mirror of top
+        (12, [3, 4, 5, 6, 12, 13, 14, 15]),
+        (12, [9]),
+        (14, [3, 4, 5, 13, 14, 15]),
+        (14, [8, 9, 10]),
+        # Bottom decorative spires
+        (17, [4, 5, 13, 14]),
+        (17, [9]),
     ]
     for r, cs in walls:
         for c in cs:
@@ -372,7 +377,13 @@ def build_l3_bangkok() -> list[list[int]]:
     fill_dots(g)
     g[9][8] = 0; g[9][9] = 0; g[9][10] = 0
     open_side_tunnel(g, 9)
+    # Lighter transit-lane stripping than before — keep more pellets in flow
     clear_transit_lanes(g, cols=(1, 17), rows=(11,))
+    # Trap zone — strip dots above pen
+    for r in (6, 7):
+        for c in range(6, 13):
+            if g[r][c] == 2:
+                g[r][c] = 0
     g[1][1] = 3; g[1][17] = 3
     g[19][1] = 3; g[19][17] = 3
     clear_unreachable(g, 19, 9)
@@ -380,31 +391,63 @@ def build_l3_bangkok() -> list[list[int]]:
 
 
 def build_l4_lounge() -> list[list[int]]:
-    """L4 Bonus First-Class Lounge — small chamber FILLED with dots and 4 power pellets.
-    GameScene reads cfg.isBonus to: 30s timer, scared slow ghosts, bonus items
-    spawn rapidly. Level ends on timer (not dot count) so players collect what they can."""
+    """L4 SPACE bonus — bigger rocket silhouette, fully connected.
+    Densely packed dots inside. GameScene reads cfg.isBonus: 30s timer, scared
+    slow ghosts, x3 score, no maze dimmer (space bg fills the canvas around)."""
     g = empty_grid_with_border()
-    for r in range(1, 4):
+    # Wall off the canvas — carve the rocket silhouette open.
+    for r in range(1, 20):
         for c in range(1, 18):
             g[r][c] = 1
-    for r in range(17, 20):
-        for c in range(1, 18):
-            g[r][c] = 1
-    for r in range(4, 17):
-        for c in [1, 2, 3, 15, 16, 17]:
-            g[r][c] = 1
-    for r in range(4, 17):
-        for c in range(4, 15):
+
+    # Bigger rocket — fills more of canvas, fully connected from nose to engine.
+    rocket = [
+        # Nose cone (rows 1-3)
+        (1, [9]),
+        (2, [8, 9, 10]),
+        (3, [7, 8, 9, 10, 11]),
+        # Upper body (rows 4-7)
+        (4, [6, 7, 8, 9, 10, 11, 12]),
+        (5, [5, 6, 7, 8, 9, 10, 11, 12, 13]),
+        (6, [5, 6, 7, 8, 9, 10, 11, 12, 13]),
+        (7, [5, 6, 7, 8, 9, 10, 11, 12, 13]),
+        # Mid body (rows 8-11) — widest, ghost pen lives here
+        (8, [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]),
+        (9, [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]),
+        (10, [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]),
+        (11, [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]),
+        # Lower body (rows 12-13)
+        (12, [5, 6, 7, 8, 9, 10, 11, 12, 13]),
+        (13, [5, 6, 7, 8, 9, 10, 11, 12, 13]),
+        # Fins flare (rows 14-15)
+        (14, [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]),
+        (15, [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]),
+        # Fin tips taper (row 16)
+        (16, [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]),
+        # Engine flare (rows 17-18) — narrows to point
+        (17, [7, 8, 9, 10, 11]),
+        (18, [8, 9, 10]),
+    ]
+    for r, cs in rocket:
+        for c in cs:
             g[r][c] = 0
-    stamp_pen(g, top_row=9, left_col=7, right_col=11)
+
+    # Ghost pen — inside mid body (rows 9-11 cols 8-10)
+    stamp_pen(g, top_row=9, left_col=8, right_col=10)
+
     fill_dots(g)
-    # Pen interior cleared
-    g[10][8] = 0; g[10][9] = 0; g[10][10] = 0
-    # 4 power pellets at the chamber corners
-    g[4][4] = 3
-    g[4][14] = 3
-    g[16][4] = 3
-    g[16][14] = 3
+    g[10][8] = 0; g[10][9] = 0; g[10][10] = 0  # pen interior
+
+    # Power pellets at distinctive points
+    g[1][9] = 3   # nose tip
+    g[14][3] = 3  # left fin tip
+    g[14][15] = 3 # right fin tip
+    g[18][9] = 3  # engine tip
+
+    # Verify all open cells reachable from player spawn (engine area).
+    # If not — flag visually by leaving as walls. (Player spawn computed by analyzeMaze
+    # walks col 9 up from bottom, will land on row 18 col 9 = engine.)
+    clear_unreachable(g, 18, 9)
     return g
 
 
@@ -438,7 +481,7 @@ def build_l5_seoul() -> list[list[int]]:
     fill_dots(g)
     g[9][8] = 0; g[9][9] = 0; g[9][10] = 0
     open_side_tunnel(g, 9)
-    clear_transit_lanes(g, cols=(1, 17), rows=(11,))
+    clear_transit_lanes(g, cols=(1, 17), rows=(11, 18, 19))
     g[1][1] = 3; g[1][17] = 3
     g[19][1] = 3; g[19][17] = 3
     clear_unreachable(g, 19, 9)
@@ -484,7 +527,8 @@ def build_l6_kl() -> list[list[int]]:
 
 def build_l1_changi():
     g = [row[:] for row in L1]
-    clear_transit_lanes(g, cols=(), rows=(11,))  # row 11 is mid-pen-tunnel, already empty mostly
+    # Strip dots from highways: row 9 (mid), row 13 (lower), cols 1+17 (vertical highways)
+    clear_transit_lanes(g, cols=(1, 17), rows=(9, 13))
     return g
 
 

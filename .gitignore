@@ -3,3 +3,6 @@ dist
 .DS_Store
 *.log
 .vite
+.playwright-cli/
+generated/picks-v2/
+generated/refs/
