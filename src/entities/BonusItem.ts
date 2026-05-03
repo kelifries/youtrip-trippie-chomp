@@ -1,7 +1,7 @@
 import {
   COLS, ROWS, WALL, GATE, DX, DY,
   BonusType, BONUS_TYPES, BONUS_LIFETIME,
-  TELEPORT_MIN_DISTANCE, BONUS_BLINK_THRESHOLD,
+  BONUS_BLINK_THRESHOLD,
 } from '../config/constants';
 import { Player } from './Player';
 
@@ -10,8 +10,6 @@ export interface BonusData {
   row: number;
   type: BonusType;
   timer: number;
-  col2?: number;
-  row2?: number;
 }
 
 /**
@@ -51,25 +49,12 @@ let bonusTypeIndex = Math.floor(Math.random() * BONUS_TYPES.length);
 
 export function spawnBonus(map: number[][], player: Player): BonusData | null {
   const walkable = findSpawnCandidates(map, player);
-  if (walkable.length < 2) return null;
+  if (walkable.length < 1) return null;
 
   const type = BONUS_TYPES[bonusTypeIndex % BONUS_TYPES.length];
   bonusTypeIndex++;
-  const idx1 = Math.floor(Math.random() * walkable.length);
-  const spot = walkable[idx1];
-  const bonus: BonusData = { col: spot.col, row: spot.row, type, timer: BONUS_LIFETIME };
-
-  if (type === 'teleport') {
-    const others = walkable.filter((e, i) =>
-      i !== idx1 && Math.abs(e.col - spot.col) + Math.abs(e.row - spot.row) > TELEPORT_MIN_DISTANCE
-    );
-    const pool = others.length > 0 ? others : walkable.filter((_, i) => i !== idx1);
-    const spot2 = pool[Math.floor(Math.random() * pool.length)];
-    bonus.col2 = spot2.col;
-    bonus.row2 = spot2.row;
-  }
-
-  return bonus;
+  const spot = walkable[Math.floor(Math.random() * walkable.length)];
+  return { col: spot.col, row: spot.row, type, timer: BONUS_LIFETIME };
 }
 
 export function isBonusBlinking(bonus: BonusData): boolean {

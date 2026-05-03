@@ -37,6 +37,8 @@ export class PreloadScene extends Phaser.Scene {
     this.load.image('neon-cyan', 'assets/neon-sign-cyan.webp');
     this.load.image('passport', 'assets/passport.webp');
     this.load.image('globe', 'assets/sprite-globe.webp');
+    this.load.image('laser', 'assets/sprite-laser.webp');
+    this.load.image('magnet', 'assets/sprite-magnet.webp');
 
     // Game-over background (used by GameOverScene + ShareImage canvas source)
     this.load.image('game-over-bg', 'assets/game-over-bg.webp');

@@ -35,7 +35,7 @@ export class AudioSystem {
     }
   }
 
-  play(type: 'dot' | 'power' | 'ghost' | 'die' | 'click' | 'levelup' | 'gameover'): void {
+  play(type: 'dot' | 'power' | 'ghost' | 'die' | 'click' | 'levelup' | 'gameover' | 'tick' | 'pop' | 'whoosh'): void {
     if (!this.ctx || this.muted) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
@@ -177,6 +177,73 @@ export class AudioSystem {
         osc.start(now);
         osc.stop(now + 0.9);
         break;
+
+      case 'tick':
+        // Quiet ascending blip for stat counting — quick and light
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(1320, now);
+        osc.frequency.setValueAtTime(1760, now + 0.02);
+        gain.gain.setValueAtTime(0.06, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+        osc.start(now);
+        osc.stop(now + 0.05);
+        break;
+
+      case 'pop': {
+        // Satisfying coin/score pop — bright square stab + sub-bass thump
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(880, now);
+        osc.frequency.exponentialRampToValueAtTime(1568, now + 0.06);
+        osc.frequency.exponentialRampToValueAtTime(2093, now + 0.14);
+        gain.gain.setValueAtTime(0.22, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+        osc.start(now);
+        osc.stop(now + 0.22);
+        // Sub-bass body
+        const sub = this.ctx.createOscillator();
+        const subG = this.ctx.createGain();
+        sub.type = 'triangle';
+        sub.frequency.setValueAtTime(196, now);
+        sub.frequency.exponentialRampToValueAtTime(330, now + 0.08);
+        sub.connect(subG); subG.connect(this.ctx.destination);
+        subG.gain.setValueAtTime(0.18, now);
+        subG.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+        sub.start(now); sub.stop(now + 0.22);
+        break;
+      }
+
+      case 'whoosh': {
+        // Boarding pass slam — noisy descending whoosh + low impact thud,
+        // timed to land at ~50ms (sync with the camera shake on stamp slam).
+        // Noise burst (filtered to mid-band) for the "swoop"
+        const bufferSize = this.ctx.sampleRate * 0.28;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+        }
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buffer;
+        const noiseFilter = this.ctx.createBiquadFilter();
+        noiseFilter.type = 'bandpass';
+        noiseFilter.frequency.setValueAtTime(2200, now);
+        noiseFilter.frequency.exponentialRampToValueAtTime(400, now + 0.25);
+        noiseFilter.Q.value = 1.2;
+        const noiseGain = this.ctx.createGain();
+        noiseGain.gain.setValueAtTime(0.18, now);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+        noise.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(this.ctx.destination);
+        noise.start(now); noise.stop(now + 0.3);
+        // Low impact thud to sync with shake
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(140, now + 0.04);
+        osc.frequency.exponentialRampToValueAtTime(60, now + 0.18);
+        gain.gain.setValueAtTime(0.0, now);
+        gain.gain.linearRampToValueAtTime(0.32, now + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+        osc.start(now); osc.stop(now + 0.25);
+        break;
+      }
     }
   }
 

@@ -75,9 +75,9 @@ export class HowToPlayScene extends Phaser.Scene {
 
     // 4 item cards — y=252
     const items = [
-      { key: 'passport', name: 'PASSPORT', desc: 'Ability to\nteleport', color: '#FF6B6B' },
+      { key: 'laser', name: 'LASER', desc: 'Auto-fire\nbeam', color: '#FF3EC8' },
       { key: 'card', name: 'YOUTRIP', desc: 'Chomp on\nmonsters', color: '#D8B4FE' },
-      { key: 'airplane', name: 'PLANE', desc: 'Speed\nboost', color: '#E0E0E0' },
+      { key: 'magnet', name: 'MAGNET', desc: 'Pull dots\nin', color: '#FF5252' },
       { key: 'globe', name: 'LOCK', desc: 'Freeze\nmonsters', color: '#4FC3F7' },
     ];
     const cardW = 105, cardH = 135, cardGap = 10;

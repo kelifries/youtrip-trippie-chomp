@@ -46,9 +46,19 @@ export const BONUS_SPAWN_MIN = 8000;
 export const BONUS_SPAWN_MAX = 12000;
 export const BONUS_LIFETIME = 15000;
 export const BONUS_BLINK_THRESHOLD = 3000;
-export const BOOST_DURATION = 7000;
+export const BOOST_DURATION = 7000;          // legacy — retained for type compatibility
 export const FREEZE_DURATION = 5000;
-export const TELEPORT_MIN_DISTANCE = 8;
+export const TELEPORT_MIN_DISTANCE = 8;       // legacy
+
+// Laser powerup — Trippie auto-fires a beam in his current direction.
+export const LASER_DURATION = 5000;
+export const LASER_FIRE_INTERVAL = 380;       // ms between shots
+export const LASER_BEAM_FADE = 180;           // ms beam stays visible
+
+// Magnet powerup — pulls dots within radius toward Trippie.
+export const MAGNET_DURATION = 5000;
+export const MAGNET_RADIUS = 3;               // tiles
+export const MAGNET_PULL_INTERVAL = 140;      // ms between collection ticks
 
 // Scoring
 export const SCORE_DOT = 10;
@@ -114,8 +124,8 @@ export const COLOR_TEAL = 0x00D2C8;
 export const COLOR_POPUP = 0x00D2C8;
 
 // Bonus types
-export type BonusType = 'boost' | 'teleport' | 'freeze';
-export const BONUS_TYPES: BonusType[] = ['boost', 'teleport', 'freeze'];
+export type BonusType = 'laser' | 'magnet' | 'freeze';
+export const BONUS_TYPES: BonusType[] = ['laser', 'magnet', 'freeze'];
 
 // Power pellet corner positions (where POWER tiles are in the map)
 export const POWER_CORNERS = [

@@ -5,12 +5,14 @@ import { BonusData, spawnBonus, isBonusBlinking } from '../entities/BonusItem';
 import { audioSystem } from '../systems/AudioSystem';
 import { cloneMaze, countDots, analyzeMaze, type MazeMeta } from '../config/mazes';
 import {
-  COLS, ROWS, WALL, DOT, POWER, EMPTY, GATE,
+  COLS, ROWS, WALL, DOT, POWER, EMPTY, GATE, DX, DY,
   Direction, STARTING_LIVES,
   POWER_DURATION, POWER_FLASH_THRESHOLD,
   INVINCIBLE_DURATION, DYING_DURATION, LEVEL_WIN_DURATION,
   BONUS_FIRST_SPAWN_DELAY, BONUS_SPAWN_MIN, BONUS_SPAWN_MAX,
   BOOST_DURATION, FREEZE_DURATION,
+  LASER_DURATION, LASER_FIRE_INTERVAL, LASER_BEAM_FADE,
+  MAGNET_DURATION, MAGNET_RADIUS, MAGNET_PULL_INTERVAL,
   SCORE_DOT, SCORE_POWER, SCORE_BONUS, SCORE_GHOST_BASE,
   POPUP_DURATION,
   COLOR_WALL, COLOR_WALL_BORDER, COLOR_DOT, COLOR_GATE,
@@ -47,7 +49,13 @@ export class GameScene extends Phaser.Scene {
   private ghostScore: number = SCORE_GHOST_BASE;
   private invincibleTimer: number = 0;
   private freezeTimer: number = 0;
-  private boostTimer: number = 0;
+  private boostTimer: number = 0;          // legacy — retained for any old refs
+  private laserTimer: number = 0;
+  private laserCooldown: number = 0;
+  private magnetTimer: number = 0;
+  private magnetPullCooldown: number = 0;
+  private laserGraphics!: Phaser.GameObjects.Graphics;
+  private magnetAuraGraphics!: Phaser.GameObjects.Graphics;
   private popupTimer: number = 0;
   private popupText: string = '';
   private popupGlow!: Phaser.GameObjects.Graphics;
@@ -218,6 +226,12 @@ export class GameScene extends Phaser.Scene {
 
     // Entity graphics layer (overlays, trails)
     this.entityGraphics = this.add.graphics();
+    // Laser beam layer — additive blend so beams glow over the maze.
+    this.laserGraphics = this.add.graphics();
+    this.laserGraphics.setDepth(3.6).setBlendMode(Phaser.BlendModes.ADD);
+    // Magnet aura layer — sits below the player sprite.
+    this.magnetAuraGraphics = this.add.graphics();
+    this.magnetAuraGraphics.setDepth(3.4).setBlendMode(Phaser.BlendModes.ADD);
 
     // Player sprite — depth 4 (above maze at 2 and ghosts at 3)
     this.playerSprite = this.add.image(0, 0, 'trippie-a');
@@ -387,15 +401,13 @@ export class GameScene extends Phaser.Scene {
     this.levelStartScore = this.score;
     this.levelDotsAtStart = this.totalDotsEaten;
     this.levelGhostsAtStart = this.totalGhostsEaten;
-    // Resize the dimmer to cover the maze region — bonus levels skip the dimmer
-    // because the chamber is small and we want full bg visibility.
-    if (cfg.isBonus) {
-      this.mazeDimmer.setVisible(false);
-    } else {
-      this.mazeDimmer.setVisible(true);
-      this.mazeDimmer.setPosition(this.offsetX, this.offsetY);
-      this.mazeDimmer.setSize(COLS * this.tileSize, ROWS * this.tileSize);
-    }
+    // Resize the dimmer to cover the maze region. Bonus levels keep a light
+    // dim so the nebula bg shows through but pellets stay readable; main levels
+    // use the full dimmer for contrast against busy destination art.
+    this.mazeDimmer.setVisible(true);
+    this.mazeDimmer.setPosition(this.offsetX, this.offsetY);
+    this.mazeDimmer.setSize(COLS * this.tileSize, ROWS * this.tileSize);
+    this.mazeDimmer.setFillStyle(0x000000, cfg.isBonus ? 0.32 : 0.45);
     this.dotsLeft = countDots(this.map);
     this.player = new Player(this.level, this.mazeMeta);
     this.ghosts = [];
@@ -424,6 +436,10 @@ export class GameScene extends Phaser.Scene {
     this.bonusItem = null;
     this.bonusSpawnTimer = cfg.isBonus ? 1000 : BONUS_FIRST_SPAWN_DELAY;
     this.boostTimer = 0;
+    this.laserTimer = 0;
+    this.laserCooldown = 0;
+    this.magnetTimer = 0;
+    this.magnetPullCooldown = 0;
     this.freezeTimer = 0;
     this.invincibleTimer = 0;
     this.gameState = 'playing';
@@ -592,9 +608,10 @@ export class GameScene extends Phaser.Scene {
     // Card layout — 76% width, 460 tall to fit bigger fonts + inside-panel Trippie
     const cw = W * 0.78, ch = 460, cx = W / 2, cy = H / 2;
     // Pixel-art scoreboard frame replaces the code-drawn rect. v4 is the most
-    // minimal frame (corner dot accents only, no edge decoration). Tight padding.
+    // minimal frame (corner dot accents only, no edge decoration). Wider
+    // padding so header text doesn't bump against the corner accents.
     const panel = this.add.image(cx, cy, 'scoreboard-frame')
-      .setDisplaySize(cw + 30, ch + 50)
+      .setDisplaySize(cw + 70, ch + 70)
       .setDepth(141);
     const panelSx = panel.scaleX;
     const panelSy = panel.scaleY;
@@ -665,13 +682,23 @@ export class GameScene extends Phaser.Scene {
       const delay = 600 + i * 220;
       this.tweens.add({ targets: [labelText, valText], alpha: 1, duration: 250, delay });
       const obj = { v: 0 };
+      let lastTickV = 0;
       this.tweens.add({
         targets: obj, v: s.value,
         duration: 500, delay: delay + 50, ease: 'Cubic.easeOut',
-        onUpdate: () => valText.setText(`${s.prefix || ''}${Math.floor(obj.v)}`),
+        onUpdate: () => {
+          const cur = Math.floor(obj.v);
+          valText.setText(`${s.prefix || ''}${cur}`);
+          // Counting tick — fire every 4 units climbed (caps the rate so 142
+          // doesn't sound like a machine gun).
+          if (cur - lastTickV >= Math.max(1, Math.ceil(s.value / 14))) {
+            lastTickV = cur;
+            audioSystem.play('tick');
+          }
+        },
         onComplete: () => {
           valText.setText(`${s.prefix || ''}${s.value}`);
-          audioSystem.play('click');
+          audioSystem.play('pop');
           this.tweens.add({ targets: valText, scale: 1.25, yoyo: true, duration: 180 });
         },
       });
@@ -713,7 +740,7 @@ export class GameScene extends Phaser.Scene {
         // Big pulse + glow flash + emphatic pop
         this.tweens.add({ targets: totalText, scale: 1.3, yoyo: true, duration: 200, ease: 'Sine.easeOut' });
         this.tweens.add({ targets: totalGlow, alpha: 0.6, yoyo: true, duration: 250 });
-        audioSystem.play('power');
+        audioSystem.play('pop');
       },
     });
 
@@ -735,7 +762,6 @@ export class GameScene extends Phaser.Scene {
     btn.setInteractive({ useHandCursor: true });
     const proceed = () => {
       btn.disableInteractive();
-      audioSystem.play('levelup');
       this.tweens.add({
         targets: objs,
         alpha: 0,
@@ -775,6 +801,22 @@ export class GameScene extends Phaser.Scene {
     if (this.freezeTimer > 0) this.freezeTimer -= dt;
     if (this.boostTimer > 0) this.boostTimer -= dt;
     if (this.popupTimer > 0) this.popupTimer -= dt;
+    if (this.laserTimer > 0) {
+      this.laserTimer -= dt;
+      this.laserCooldown -= dt;
+      if (this.laserCooldown <= 0) {
+        this.fireLaser();
+        this.laserCooldown = LASER_FIRE_INTERVAL;
+      }
+    }
+    if (this.magnetTimer > 0) {
+      this.magnetTimer -= dt;
+      this.magnetPullCooldown -= dt;
+      if (this.magnetPullCooldown <= 0) {
+        this.pullMagnetDots();
+        this.magnetPullCooldown = MAGNET_PULL_INTERVAL;
+      }
+    }
     if (this.bonusLevelTimer > 0) {
       this.bonusLevelTimer -= dt;
       this.updateHUD();
@@ -877,45 +919,28 @@ export class GameScene extends Phaser.Scene {
       this.drawMaze();
     }
 
-    // Bonus collection
-    if (this.bonusItem) {
-      let collected = false;
-      if (col === this.bonusItem.col && row === this.bonusItem.row) {
-        collected = true;
-        if (this.bonusItem.type === 'teleport' && this.bonusItem.col2 !== undefined && this.bonusItem.row2 !== undefined) {
-          this.player.col = this.bonusItem.col2;
-          this.player.row = this.bonusItem.row2;
-          this.player.px = this.bonusItem.col2;
-          this.player.py = this.bonusItem.row2;
-        }
-      } else if (this.bonusItem.type === 'teleport' &&
-                 col === this.bonusItem.col2 && row === this.bonusItem.row2) {
-        collected = true;
-        this.player.col = this.bonusItem.col;
-        this.player.row = this.bonusItem.row;
-        this.player.px = this.bonusItem.col;
-        this.player.py = this.bonusItem.row;
+    // Bonus collection — single-cell pickup
+    if (this.bonusItem && col === this.bonusItem.col && row === this.bonusItem.row) {
+      const type = this.bonusItem.type;
+      const earned = SCORE_BONUS * bonusMult;
+      this.score += earned;
+      this.spawnScoreFloater(earned, this.player.col, this.player.row);
+      this.spawnCollectParticles(this.player.col, this.player.row, 0xffb347);
+      this.cameras.main.shake(220, 0.008);
+      this.bonusItem = null;
+      if (type === 'laser') {
+        this.laserTimer = LASER_DURATION;
+        this.laserCooldown = 0;
+        this.showPopup('LASER LOCKED ON!');
+      } else if (type === 'freeze') {
+        this.freezeTimer = FREEZE_DURATION;
+        this.showPopup('RATES LOCKED!');
+      } else if (type === 'magnet') {
+        this.magnetTimer = MAGNET_DURATION;
+        this.magnetPullCooldown = 0;
+        this.showPopup('MAGNET ACTIVE!');
       }
-
-      if (collected) {
-        const type = this.bonusItem.type;
-        const earned = SCORE_BONUS * bonusMult;
-        this.score += earned;
-        this.spawnScoreFloater(earned, this.player.col, this.player.row);
-        this.spawnCollectParticles(this.player.col, this.player.row, 0xffb347);
-        this.cameras.main.shake(220, 0.008);
-        this.bonusItem = null;
-        if (type === 'boost') {
-          this.boostTimer = BOOST_DURATION;
-          this.showPopup('JET MODE!');
-        } else if (type === 'freeze') {
-          this.freezeTimer = FREEZE_DURATION;
-          this.showPopup('RATES LOCKED!');
-        } else if (type === 'teleport') {
-          this.showPopup('PASSPORT CONTROL!');
-        }
-        audioSystem.play('power');
-      }
+      audioSystem.play('power');
     }
 
     const levelEnd = cfg.isBonus
@@ -1130,6 +1155,9 @@ export class GameScene extends Phaser.Scene {
    */
   showLevelTransition(fromCode: string, toCode: string, destinationName: string, flag: string): void {
     const objs: Phaser.GameObjects.GameObject[] = [];
+
+    // Boarding pass slam SFX — synced to the camera shake on stamp slam below.
+    audioSystem.play('whoosh');
 
     // Dark cosmic overlay
     const overlay = this.add.rectangle(W / 2, H / 2, W, H, 0x0a0a1a, 0).setDepth(120);
@@ -1576,6 +1604,100 @@ export class GameScene extends Phaser.Scene {
     sweep();
   }
 
+  private fireLaser(): void {
+    const T = this.tileSize;
+    const dir = this.player.dir;
+    if (dir < 0) return;  // Direction.NONE
+    const dx = DX[dir];
+    const dy = DY[dir];
+
+    // Walk forward until first wall / edge
+    let endCol = this.player.col;
+    let endRow = this.player.row;
+    const killed: Ghost[] = [];
+    for (let step = 1; step <= Math.max(COLS, ROWS); step++) {
+      const c = this.player.col + dx * step;
+      const r = this.player.row + dy * step;
+      if (c < 0 || c >= COLS || r < 0 || r >= ROWS) break;
+      if (this.map[r][c] === WALL) break;
+      endCol = c;
+      endRow = r;
+      // Hit any non-eaten ghost in this tile
+      for (const g of this.ghosts) {
+        if (g.eaten || g.respawning || g.home) continue;
+        if (Math.round(g.px) === c && Math.round(g.py) === r) killed.push(g);
+      }
+    }
+
+    // Draw the beam — bright cyan core + magenta halo, additive blend
+    const x0 = this.offsetX + this.player.col * T + T / 2;
+    const y0 = this.offsetY + this.player.row * T + T / 2;
+    const x1 = this.offsetX + endCol * T + T / 2;
+    const y1 = this.offsetY + endRow * T + T / 2;
+    this.laserGraphics.clear().setAlpha(1);
+    this.laserGraphics.lineStyle(8, 0xff3ec8, 0.7);
+    this.laserGraphics.lineBetween(x0, y0, x1, y1);
+    this.laserGraphics.lineStyle(3, 0x00ffff, 1);
+    this.laserGraphics.lineBetween(x0, y0, x1, y1);
+    this.tweens.killTweensOf(this.laserGraphics);
+    this.tweens.add({ targets: this.laserGraphics, alpha: 0, duration: LASER_BEAM_FADE });
+
+    // Kill ghosts in beam path — same as chomping a scared ghost
+    for (const g of killed) {
+      g.eaten = true;
+      g.scared = false;
+      const earned = this.ghostScore;
+      this.score += earned;
+      this.totalGhostsEaten++;
+      this.spawnScoreFloater(earned, Math.round(g.px), Math.round(g.py));
+      this.spawnCollectParticles(Math.round(g.px), Math.round(g.py), 0x00ffff);
+      this.ghostScore *= 2;
+    }
+    if (killed.length > 0) {
+      audioSystem.play('ghost');
+      this.cameras.main.shake(120, 0.004);
+    } else {
+      audioSystem.play('click');
+    }
+  }
+
+  private pullMagnetDots(): void {
+    const pr = this.player.row;
+    const pc = this.player.col;
+    let collected = 0;
+    for (let r = Math.max(0, pr - MAGNET_RADIUS); r <= Math.min(ROWS - 1, pr + MAGNET_RADIUS); r++) {
+      for (let c = Math.max(0, pc - MAGNET_RADIUS); c <= Math.min(COLS - 1, pc + MAGNET_RADIUS); c++) {
+        if (Math.abs(r - pr) + Math.abs(c - pc) > MAGNET_RADIUS) continue;
+        if (this.map[r][c] !== DOT) continue;
+        this.map[r][c] = EMPTY;
+        this.score += SCORE_DOT;
+        this.dotsLeft--;
+        this.totalDotsEaten++;
+        this.spawnCollectParticles(c, r, 0x00ffff);
+        collected++;
+      }
+    }
+    if (collected > 0) {
+      audioSystem.play('dot');
+      this.drawMaze();
+    }
+  }
+
+  private drawMagnetAura(): void {
+    this.magnetAuraGraphics.clear();
+    if (this.magnetTimer <= 0) return;
+    const T = this.tileSize;
+    const cx = this.offsetX + this.player.col * T + T / 2;
+    const cy = this.offsetY + this.player.row * T + T / 2;
+    const t = this.time.now / 1000;
+    const pulse = (Math.sin(t * 4) + 1) / 2; // 0..1
+    const baseR = MAGNET_RADIUS * T;
+    this.magnetAuraGraphics.lineStyle(2, 0x00ffff, 0.18 + pulse * 0.10);
+    this.magnetAuraGraphics.strokeCircle(cx, cy, baseR);
+    this.magnetAuraGraphics.lineStyle(2, 0xff3ec8, 0.12 + pulse * 0.08);
+    this.magnetAuraGraphics.strokeCircle(cx, cy, baseR * 0.7);
+  }
+
   private drawMaze(): void {
     const T = this.tileSize;
     const half = T / 2;
@@ -1664,36 +1786,23 @@ export class GameScene extends Phaser.Scene {
       const by = this.offsetY + this.bonusItem.row * T + half;
 
       // Glow circle behind bonus
-      const glowColors: Record<string, number> = { boost: 0xFFD700, teleport: 0xE040FB, freeze: 0x4FC3F7 };
+      const glowColors: Record<string, number> = { laser: 0xff3ec8, magnet: 0xff5252, freeze: 0x4FC3F7 };
       const glowColor = glowColors[this.bonusItem.type] || 0xFFFFFF;
       this.entityGraphics.fillStyle(glowColor, 0.15 * alpha);
       this.entityGraphics.fillCircle(bx, by, size * 0.7);
       this.entityGraphics.fillStyle(glowColor, 0.08 * alpha);
       this.entityGraphics.fillCircle(bx, by, size * 1.0);
 
-      const textureKey = this.bonusItem.type === 'teleport' ? 'passport'
-        : this.bonusItem.type === 'freeze' ? 'globe' : 'airplane';
+      const textureKey = this.bonusItem.type === 'laser' ? 'laser'
+        : this.bonusItem.type === 'magnet' ? 'magnet'
+        : 'globe';
       this.bonusSprites[0].setTexture(textureKey);
       this.bonusSprites[0].setPosition(bx, by);
       this.bonusSprites[0].setDisplaySize(size, size);
       this.bonusSprites[0].setAlpha(alpha);
       this.bonusSprites[0].setVisible(true);
-
-      // Second teleport point
-      if (this.bonusItem.type === 'teleport' && this.bonusItem.col2 !== undefined && this.bonusItem.row2 !== undefined) {
-        const bx2 = this.offsetX + this.bonusItem.col2 * T + half;
-        const by2 = this.offsetY + this.bonusItem.row2 * T + half;
-        this.entityGraphics.fillStyle(glowColor, 0.15 * alpha);
-        this.entityGraphics.fillCircle(bx2, by2, size * 0.7);
-        this.entityGraphics.fillStyle(glowColor, 0.08 * alpha);
-        this.entityGraphics.fillCircle(bx2, by2, size * 1.0);
-        this.bonusSprites[1].setTexture('passport');
-        this.bonusSprites[1].setPosition(bx2, by2);
-        this.bonusSprites[1].setDisplaySize(size, size);
-        this.bonusSprites[1].setAlpha(alpha);
-        this.bonusSprites[1].setVisible(true);
-      }
     }
+    this.drawMagnetAura();
 
     // Player
     const pSprite = this.playerSprite;
