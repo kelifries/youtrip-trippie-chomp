@@ -54,6 +54,7 @@ export class GameScene extends Phaser.Scene {
   private laserCooldown: number = 0;
   private magnetTimer: number = 0;
   private magnetPullCooldown: number = 0;
+  private magnetFlying: Set<string> = new Set();
   private laserGraphics!: Phaser.GameObjects.Graphics;
   private magnetAuraGraphics!: Phaser.GameObjects.Graphics;
   private popupTimer: number = 0;
@@ -605,22 +606,25 @@ export class GameScene extends Phaser.Scene {
       });
     }
 
-    // Card layout — 76% width, 460 tall to fit bigger fonts + inside-panel Trippie
+    // Card layout — 76% width, 460 tall. Code-drawn panel: dark inner + thin
+    // magenta border + 1px cyan inner glow. No asset frame — keeps the focus
+    // on stats, lets Trippie read large.
     const cw = W * 0.78, ch = 460, cx = W / 2, cy = H / 2;
-    // Pixel-art scoreboard frame replaces the code-drawn rect. v4 is the most
-    // minimal frame (corner dot accents only, no edge decoration). Wider
-    // padding so header text doesn't bump against the corner accents.
-    const panel = this.add.image(cx, cy, 'scoreboard-frame')
-      .setDisplaySize(cw + 70, ch + 70)
-      .setDepth(141);
-    const panelSx = panel.scaleX;
-    const panelSy = panel.scaleY;
-    panel.setAlpha(0).setScale(panelSx * 0.7, panelSy * 0.7);
+    const panel = this.add.rectangle(cx, cy, cw, ch, 0x1a0e2e, 0.97)
+      .setStrokeStyle(3, 0xff3ec8, 1)
+      .setDepth(141).setAlpha(0).setScale(0.7);
     objs.push(panel);
     this.tweens.add({
-      targets: panel, alpha: 1, scaleX: panelSx, scaleY: panelSy,
+      targets: panel, alpha: 1, scale: 1,
       duration: 320, ease: 'Back.easeOut',
     });
+    // Inner cyan glow line — sits 1px inside the magenta border for the
+    // arcade neon feel without an asset.
+    const innerGlow = this.add.rectangle(cx, cy, cw - 10, ch - 10, 0x000000, 0)
+      .setStrokeStyle(1, 0x00d2c8, 0.65)
+      .setDepth(141.5).setAlpha(0);
+    objs.push(innerGlow);
+    this.tweens.add({ targets: innerGlow, alpha: 1, duration: 320, delay: 120 });
 
     // Header — bigger gold text + small pulse
     const header = this.add.text(cx, cy - ch / 2 + 38, cfg.isBonus ? '🚀 BONUS CLEAR!' : `LVL ${this.level} CLEARED`, {
@@ -638,11 +642,11 @@ export class GameScene extends Phaser.Scene {
     objs.push(flagText);
     this.tweens.add({ targets: flagText, alpha: 1, duration: 280, delay: 350 });
 
-    // Trippie victory mascot — sits inside the panel below the country text,
-    // bouncing gently to anchor the celebration without crowding stats.
-    const victory = this.add.image(cx, cy - ch / 2 + 118, 'trippie-victory')
+    // Trippie victory mascot — large, anchors the celebration. Sits between
+    // the country text and the stat rows.
+    const victory = this.add.image(cx, cy - ch / 2 + 158, 'trippie-victory')
       .setDepth(144);
-    victory.setDisplaySize(78, 52);
+    victory.setDisplaySize(168, 112);
     const vSx = victory.scaleX;
     const vSy = victory.scaleY;
     victory.setAlpha(0).setScale(0);
@@ -803,11 +807,8 @@ export class GameScene extends Phaser.Scene {
     if (this.popupTimer > 0) this.popupTimer -= dt;
     if (this.laserTimer > 0) {
       this.laserTimer -= dt;
-      this.laserCooldown -= dt;
-      if (this.laserCooldown <= 0) {
-        this.fireLaser();
-        this.laserCooldown = LASER_FIRE_INTERVAL;
-      }
+      this.fireLaser();  // continuous — redraws every frame, kills any monster in path
+      if (this.laserTimer <= 0) this.laserGraphics.clear();
     }
     if (this.magnetTimer > 0) {
       this.magnetTimer -= dt;
@@ -1607,7 +1608,10 @@ export class GameScene extends Phaser.Scene {
   private fireLaser(): void {
     const T = this.tileSize;
     const dir = this.player.dir;
-    if (dir < 0) return;  // Direction.NONE
+    if (dir < 0) {
+      this.laserGraphics.clear();
+      return;  // Direction.NONE
+    }
     const dx = DX[dir];
     const dy = DY[dir];
 
@@ -1622,27 +1626,27 @@ export class GameScene extends Phaser.Scene {
       if (this.map[r][c] === WALL) break;
       endCol = c;
       endRow = r;
-      // Hit any non-eaten ghost in this tile
       for (const g of this.ghosts) {
         if (g.eaten || g.respawning || g.home) continue;
         if (Math.round(g.px) === c && Math.round(g.py) === r) killed.push(g);
       }
     }
 
-    // Draw the beam — bright cyan core + magenta halo, additive blend
+    // Continuous beam — redraw every frame with a slight pulse on the core.
     const x0 = this.offsetX + this.player.col * T + T / 2;
     const y0 = this.offsetY + this.player.row * T + T / 2;
     const x1 = this.offsetX + endCol * T + T / 2;
     const y1 = this.offsetY + endRow * T + T / 2;
+    const pulse = 0.85 + 0.15 * Math.sin(this.time.now * 0.025);
     this.laserGraphics.clear().setAlpha(1);
-    this.laserGraphics.lineStyle(8, 0xff3ec8, 0.7);
+    this.laserGraphics.lineStyle(10, 0xff3ec8, 0.55 * pulse);
     this.laserGraphics.lineBetween(x0, y0, x1, y1);
-    this.laserGraphics.lineStyle(3, 0x00ffff, 1);
+    this.laserGraphics.lineStyle(4, 0x00ffff, 0.95 * pulse);
     this.laserGraphics.lineBetween(x0, y0, x1, y1);
-    this.tweens.killTweensOf(this.laserGraphics);
-    this.tweens.add({ targets: this.laserGraphics, alpha: 0, duration: LASER_BEAM_FADE });
+    this.laserGraphics.fillStyle(0xffffff, pulse);
+    this.laserGraphics.fillCircle(x1, y1, 4);  // tip glow
 
-    // Kill ghosts in beam path — same as chomping a scared ghost
+    // Kill any ghost newly hit this frame.
     for (const g of killed) {
       g.eaten = true;
       g.scared = false;
@@ -1656,31 +1660,54 @@ export class GameScene extends Phaser.Scene {
     if (killed.length > 0) {
       audioSystem.play('ghost');
       this.cameras.main.shake(120, 0.004);
-    } else {
-      audioSystem.play('click');
     }
   }
 
   private pullMagnetDots(): void {
     const pr = this.player.row;
     const pc = this.player.col;
-    let collected = 0;
+    const T = this.tileSize;
+    let pulled = 0;
     for (let r = Math.max(0, pr - MAGNET_RADIUS); r <= Math.min(ROWS - 1, pr + MAGNET_RADIUS); r++) {
       for (let c = Math.max(0, pc - MAGNET_RADIUS); c <= Math.min(COLS - 1, pc + MAGNET_RADIUS); c++) {
         if (Math.abs(r - pr) + Math.abs(c - pc) > MAGNET_RADIUS) continue;
         if (this.map[r][c] !== DOT) continue;
+        const key = `${r},${c}`;
+        if (this.magnetFlying.has(key)) continue;
+
+        // Lift the dot off the map and into a flying sprite that tweens to
+        // Trippie's current position. Score awarded on contact.
+        this.magnetFlying.add(key);
         this.map[r][c] = EMPTY;
-        this.score += SCORE_DOT;
-        this.dotsLeft--;
-        this.totalDotsEaten++;
-        this.spawnCollectParticles(c, r, 0x00ffff);
-        collected++;
+        const startX = this.offsetX + c * T + T / 2;
+        const startY = this.offsetY + r * T + T / 2;
+        const flyer = this.add.circle(startX, startY, T * 0.18, 0xFFFFAA, 1)
+          .setDepth(3.7).setStrokeStyle(1, 0x00ffff, 0.7);
+        const obj = { v: 0 };
+        this.tweens.add({
+          targets: obj, v: 1,
+          duration: 320, ease: 'Cubic.easeIn',
+          onUpdate: () => {
+            const tx = this.offsetX + this.player.col * T + T / 2;
+            const ty = this.offsetY + this.player.row * T + T / 2;
+            flyer.x = startX + (tx - startX) * obj.v;
+            flyer.y = startY + (ty - startY) * obj.v;
+            flyer.setScale(1 + obj.v * 0.4);  // grow slightly as it nears
+          },
+          onComplete: () => {
+            flyer.destroy();
+            this.magnetFlying.delete(key);
+            this.score += SCORE_DOT;
+            this.dotsLeft--;
+            this.totalDotsEaten++;
+            this.spawnCollectParticles(this.player.col, this.player.row, 0x00ffff);
+            audioSystem.play('dot');
+          },
+        });
+        pulled++;
       }
     }
-    if (collected > 0) {
-      audioSystem.play('dot');
-      this.drawMaze();
-    }
+    if (pulled > 0) this.drawMaze();
   }
 
   private drawMagnetAura(): void {
