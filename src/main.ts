@@ -5,10 +5,11 @@ import { HowToPlayScene } from './scenes/HowToPlayScene';
 import { GameScene } from './scenes/GameScene';
 import { GameOverScene } from './scenes/GameOverScene';
 
-// Fixed game resolution — Phaser scales this to fit any screen
-// 480x720 = 2:3 portrait ratio, works well on both mobile and desktop
+// Fixed game resolution — Phaser scales this to fit any screen.
+// 480x960 = 1:2 portrait, closer to modern phone aspect (9:19.5) so the
+// game canvas fills more of the screen vertically.
 const GAME_WIDTH = 480;
-const GAME_HEIGHT = 720;
+const GAME_HEIGHT = 960;
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
