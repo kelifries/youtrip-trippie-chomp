@@ -268,21 +268,21 @@ export class GameScene extends Phaser.Scene {
     const hudY = 10;
     const hudStyle: Phaser.Types.GameObjects.Text.TextStyle = {
       fontFamily: '"Press Start 2P", monospace',
-      fontSize: '11px',
+      fontSize: '14px',
       color: '#ffffff',
     };
 
     const hudRow = HUD_HEIGHT + 2;
-    this.scoreText = this.add.text(16, hudRow, 'SCORE: 0', hudStyle);
+    this.scoreText = this.add.text(14, hudRow, 'SCORE: 0', hudStyle);
     this.levelText = this.add.text(W / 2, hudRow, 'LVL: 1', hudStyle).setOrigin(0.5, 0);
-    this.livesContainer = this.add.container(W - 10, hudRow);
+    this.livesContainer = this.add.container(W - 8, hudRow);
 
     // Brand subtitle under HUD — anchors the score framing to the campaign
-    this.add.text(16, hudRow + 14, 'FROM FOREIGN FEES', {
+    this.add.text(14, hudRow + 18, 'FROM FOREIGN FEES', {
       fontFamily: '"Press Start 2P", monospace',
-      fontSize: '6px',
+      fontSize: '8px',
       color: '#FFD700',
-    }).setAlpha(0.7);
+    }).setAlpha(0.75);
 
     // Mute toggle — bottom-right corner
     this.muteText = this.add.text(W - 14, H - 14, audioSystem.isMuted() ? '🔇' : '🔊', {
@@ -1544,10 +1544,10 @@ export class GameScene extends Phaser.Scene {
     else if (amount >= 50) color = '#FFD700';
     const txt = this.add.text(x, y, `+${amount}`, {
       fontFamily: '"Press Start 2P", monospace',
-      fontSize: amount >= 100 ? '14px' : '10px',
+      fontSize: amount >= 100 ? '18px' : '13px',
       color,
       stroke: '#000000',
-      strokeThickness: 3,
+      strokeThickness: 4,
     }).setOrigin(0.5).setDepth(50);
     this.tweens.add({
       targets: txt,
@@ -1611,8 +1611,8 @@ export class GameScene extends Phaser.Scene {
 
     this.livesContainer.removeAll(true);
     for (let i = 0; i < this.lives; i++) {
-      const life = this.add.image(-i * 28, -3, 'trippie-face');
-      life.setScale(26 / life.width);
+      const life = this.add.image(-i * 36, -3, 'trippie-face');
+      life.setScale(34 / life.width);
       life.setOrigin(1, 0);
       this.livesContainer.add(life);
     }
@@ -1854,24 +1854,27 @@ export class GameScene extends Phaser.Scene {
       this.cardSprites[i].setVisible(false);
     }
 
-    // Bonus items — 2x bigger than cards, with glow
+    // Bonus items — bigger + 3-layer pulsing glow stack so pickups draw the eye.
     this.bonusSprites.forEach(s => s.setVisible(false));
     if (this.bonusItem) {
-      const pulse = 0.8 + 0.2 * Math.sin(now * 0.005);
-      const size = T * 2.1 * pulse;
+      const pulse = 0.85 + 0.15 * Math.sin(now * 0.005);
+      const glowPulse = 0.55 + 0.45 * Math.sin(now * 0.0065);
+      const size = T * 2.6 * pulse;
       const blinking = isBonusBlinking(this.bonusItem);
       const alpha = blinking ? 0.3 : 1;
 
       const bx = this.offsetX + this.bonusItem.col * T + half;
       const by = this.offsetY + this.bonusItem.row * T + half;
 
-      // Glow circle behind bonus
+      // 3-layer halo: wide outer + mid + tight core (matches card glow pattern).
       const glowColors: Record<string, number> = { laser: 0xff3ec8, magnet: 0xff5252, freeze: 0x4FC3F7 };
       const glowColor = glowColors[this.bonusItem.type] || 0xFFFFFF;
-      this.entityGraphics.fillStyle(glowColor, 0.15 * alpha);
-      this.entityGraphics.fillCircle(bx, by, size * 0.7);
-      this.entityGraphics.fillStyle(glowColor, 0.08 * alpha);
-      this.entityGraphics.fillCircle(bx, by, size * 1.0);
+      this.entityGraphics.fillStyle(glowColor, 0.20 * glowPulse * alpha);
+      this.entityGraphics.fillCircle(bx, by, T * 2.2);
+      this.entityGraphics.fillStyle(glowColor, 0.32 * glowPulse * alpha);
+      this.entityGraphics.fillCircle(bx, by, T * 1.5);
+      this.entityGraphics.fillStyle(0xffffff, 0.30 * glowPulse * alpha);
+      this.entityGraphics.fillCircle(bx, by, T * 0.95);
 
       const textureKey = this.bonusItem.type === 'laser' ? 'laser'
         : this.bonusItem.type === 'magnet' ? 'magnet'

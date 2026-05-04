@@ -80,7 +80,7 @@ export class HowToPlayScene extends Phaser.Scene {
       { key: 'magnet', name: 'MAGNET', desc: 'Pull dots\nin', color: '#FF5252' },
       { key: 'globe', name: 'LOCK', desc: 'Freeze\nmonsters', color: '#4FC3F7' },
     ];
-    const cardW = 105, cardH = 135, cardGap = 10;
+    const cardW = 108, cardH = 150, cardGap = 8;
     const totalCardsW = items.length * cardW + (items.length - 1) * cardGap;
     const cardsStartX = (W - totalCardsW) / 2;
     const cardsY = 282;
@@ -93,16 +93,16 @@ export class HowToPlayScene extends Phaser.Scene {
       cg.lineStyle(1.5, 0x3a3a6e, 1);
       cg.strokeRoundedRect(cx - cardW / 2, cardsY, cardW, cardH, 10);
 
-      const sprite = this.add.image(cx, cardsY + 38, item.key);
-      sprite.setScale(44 / Math.max(sprite.width, sprite.height));
+      const sprite = this.add.image(cx, cardsY + 46, item.key);
+      sprite.setScale(64 / Math.max(sprite.width, sprite.height));
       bounceTargets.push(sprite);
 
-      this.add.text(cx, cardsY + 72, item.name, {
-        fontFamily: font, fontSize: '10px', color: item.color,
+      this.add.text(cx, cardsY + 92, item.name, {
+        fontFamily: font, fontSize: '11px', color: item.color,
         stroke: '#000', strokeThickness: 2,
       }).setOrigin(0.5);
-      this.add.text(cx, cardsY + 104, item.desc, {
-        fontFamily: font, fontSize: '9px', color: '#FFFFFF',
+      this.add.text(cx, cardsY + 122, item.desc, {
+        fontFamily: font, fontSize: '10px', color: '#FFFFFF',
         stroke: '#000', strokeThickness: 2, align: 'center', lineSpacing: 6,
       }).setOrigin(0.5);
     });
