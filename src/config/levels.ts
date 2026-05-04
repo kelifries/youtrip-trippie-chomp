@@ -1,12 +1,12 @@
-// Per-level destination config. Sequence (revised May 4 2026):
+// Per-level destination config. Sequence (revised May 4 2026 PM):
 //   L1 = Singapore Changi (start)
 //   L2 = Tokyo
 //   L3 = Outer Space (BONUS — first bonus, early reward)
-//   L4 = Bangkok
+//   L4 = Sydney (typography "BEST RATES" maze, more interesting)
 //   L5 = Seoul
 //   L6 = Underwater (BONUS — second bonus, mid-tour break)
 //   L7 = Kuala Lumpur
-//   L8 = Sydney
+//   L8 = Bangkok
 //
 // After L8: loop L2-L8 with speed climbing (L1 is one-shot tutorial).
 
@@ -77,7 +77,7 @@ export const LEVELS: LevelConfig[] = [
       {
         sprite: 'runway-light',
         motion: 'blink',
-        startX: 120, startY: 605,
+        startX: 120, startY: 668,
         scale: 1,
         duration: 0,
         blinkPeriod: 900,
@@ -86,7 +86,7 @@ export const LEVELS: LevelConfig[] = [
       {
         sprite: 'runway-light',
         motion: 'blink',
-        startX: 240, startY: 605,
+        startX: 240, startY: 668,
         scale: 1,
         duration: 0,
         blinkPeriod: 1100,
@@ -95,7 +95,7 @@ export const LEVELS: LevelConfig[] = [
       {
         sprite: 'runway-light',
         motion: 'blink',
-        startX: 360, startY: 605,
+        startX: 360, startY: 668,
         scale: 1,
         duration: 0,
         blinkPeriod: 700,
@@ -129,16 +129,16 @@ export const LEVELS: LevelConfig[] = [
     shareHeadline: 'Trippie blasted off to space',
   },
   {
-    id: 'th-bangkok',
-    destination: 'Bangkok',
-    country: 'Thailand',
-    cityCode: 'BKK',
-    flag: '\u{1F1F9}\u{1F1ED}',
-    bgAsset: 'bg-th-bangkok',
-    mazeKey: 'th-bangkok',
-    palette: { wall: 0x1f1505, wallBorder: 0xd4a017, dotAccent: 0xffd700 },
-    tagline: 'TUK-TUK TO TOMORROW',
-    shareHeadline: 'Trippie made it to Bangkok',
+    id: 'au-sydney',
+    destination: 'Sydney',
+    country: 'Australia',
+    cityCode: 'SYD',
+    flag: '\u{1F1E6}\u{1F1FA}',
+    bgAsset: 'bg-au-sydney',
+    mazeKey: 'au-sydney',
+    palette: { wall: 0x0a1429, wallBorder: 0x4a90e2, dotAccent: 0xffe066 },
+    tagline: "G'DAY, GREAT RATES",
+    shareHeadline: 'Best rates, every trip',
   },
   {
     id: 'kr-seoul',
@@ -178,16 +178,16 @@ export const LEVELS: LevelConfig[] = [
     shareHeadline: 'Trippie made it to Kuala Lumpur',
   },
   {
-    id: 'au-sydney',
-    destination: 'Sydney',
-    country: 'Australia',
-    cityCode: 'SYD',
-    flag: '\u{1F1E6}\u{1F1FA}',
-    bgAsset: 'bg-au-sydney',
-    mazeKey: 'au-sydney',
-    palette: { wall: 0x0a1429, wallBorder: 0x4a90e2, dotAccent: 0xffe066 },
-    tagline: "G'DAY, GREAT RATES",
-    shareHeadline: 'Best rates, every trip',
+    id: 'th-bangkok',
+    destination: 'Bangkok',
+    country: 'Thailand',
+    cityCode: 'BKK',
+    flag: '\u{1F1F9}\u{1F1ED}',
+    bgAsset: 'bg-th-bangkok',
+    mazeKey: 'th-bangkok',
+    palette: { wall: 0x1f1505, wallBorder: 0xd4a017, dotAccent: 0xffd700 },
+    tagline: 'TUK-TUK TO TOMORROW',
+    shareHeadline: 'Trippie made it to Bangkok',
   },
 ];
 

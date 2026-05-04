@@ -449,6 +449,11 @@ export class GameScene extends Phaser.Scene {
     this.ghostScore = SCORE_GHOST_BASE;
     this.bonusItem = null;
     this.bonusSpawnTimer = cfg.isBonus ? 1000 : BONUS_FIRST_SPAWN_DELAY;
+    // Clear powerup overlay graphics so a stale laser beam from the previous
+    // level doesn't render into the new one.
+    this.laserGraphics?.clear();
+    this.magnetAuraGraphics?.clear();
+    this.magnetFlying.clear();
     this.boostTimer = 0;
     this.laserTimer = 0;
     this.laserCooldown = 0;
@@ -1616,12 +1621,15 @@ export class GameScene extends Phaser.Scene {
   private updateWallGlow(): void {
     this.wallGlowGraphics.clear();
     const t = this.time.now / 1000;
-    const alpha = (Math.sin(t * 3.5) + 1) / 2 * 0.55 + 0.05;  // 0.05..0.60
-    if (alpha < 0.05) return;
+    // Two-band pulse: a wide 0.0..0.9 main band + a doubled second-harmonic
+    // gives walls a clearly visible flicker rather than the previous subtle
+    // breath. Additive blend lets bright peaks read over dark walls.
+    const alpha = ((Math.sin(t * 3.0) + 1) / 2) * 0.85 + 0.10;  // 0.10..0.95
     const T = this.tileSize;
     const inset = 2;
     const borderColor = COLOR_WALL_BORDER;
-    this.wallGlowGraphics.lineStyle(1, borderColor, alpha);
+    // Inner highlight (1px, full alpha)
+    this.wallGlowGraphics.lineStyle(2, borderColor, alpha);
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
         if (this.map[r][c] !== WALL) continue;
