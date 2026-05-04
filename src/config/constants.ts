@@ -23,13 +23,15 @@ export const DX = [0, 0, -1, 1];
 export const DY = [-1, 1, 0, 0];
 export const OPPOSITE: Record<number, number> = { 0: 1, 1: 0, 2: 3, 3: 2 };
 
-// Speeds (tiles per tick at 60fps, same as v1)
+// Speeds (tiles per tick at 60fps). Gentler linear ramp than v1 — KL felt
+// too fast at the previous +0.01/level step. Halved increments + lower caps;
+// the loop still tops out, just over more levels.
 export function getPlayerSpeed(level: number): number {
-  return Math.min(0.10 + (level - 1) * 0.01, 0.20);
+  return Math.min(0.10 + (level - 1) * 0.005, 0.18);
 }
 
 export function getGhostBaseSpeed(level: number): number {
-  return Math.min(0.06 + (level - 1) * 0.008, 0.15);
+  return Math.min(0.06 + (level - 1) * 0.004, 0.13);
 }
 
 // Timers (in ms)
