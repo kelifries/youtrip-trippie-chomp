@@ -1812,18 +1812,31 @@ export class GameScene extends Phaser.Scene {
     this.entityGraphics.clear();
     this.updateWallGlow();
 
-    // Power pellet cards
+    // Power pellet cards — pulsing magenta+gold glow behind, sprite layered on top
     let cardIdx = 0;
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
         if (this.map[r][c] === POWER && cardIdx < this.cardSprites.length) {
           const pulse = 0.9 + 0.1 * Math.sin(now * 0.004);
+          const glowPulse = 0.55 + 0.45 * Math.sin(now * 0.006);
           const size = T * 1.4 * pulse;
           const x = this.offsetX + c * T + half;
           const y = this.offsetY + r * T + half;
-          this.cardSprites[cardIdx].setPosition(x, y);
-          this.cardSprites[cardIdx].setDisplaySize(size, size);
-          this.cardSprites[cardIdx].setVisible(true);
+          // Outer wide halo (magenta) — soft falloff
+          this.entityGraphics.fillStyle(0xff3ec8, 0.18 * glowPulse);
+          this.entityGraphics.fillCircle(x, y, T * 1.6);
+          // Mid halo (gold)
+          this.entityGraphics.fillStyle(0xffd700, 0.32 * glowPulse);
+          this.entityGraphics.fillCircle(x, y, T * 1.1);
+          // Tight bright core (white-gold)
+          this.entityGraphics.fillStyle(0xffeb88, 0.55 * glowPulse);
+          this.entityGraphics.fillCircle(x, y, T * 0.75);
+          // Sprite — preserve aspect ratio
+          const card = this.cardSprites[cardIdx];
+          card.setPosition(x, y);
+          const cardScale = size / Math.max(card.width, card.height);
+          card.setScale(cardScale);
+          card.setVisible(true);
           cardIdx++;
         }
       }
@@ -1855,8 +1868,10 @@ export class GameScene extends Phaser.Scene {
         : this.bonusItem.type === 'magnet' ? 'magnet'
         : 'globe';
       this.bonusSprites[0].setTexture(textureKey);
+      // Preserve sprite aspect ratio — magnet/laser are wider than tall.
+      const bonusScale = size / Math.max(this.bonusSprites[0].width, this.bonusSprites[0].height);
+      this.bonusSprites[0].setScale(bonusScale);
       this.bonusSprites[0].setPosition(bx, by);
-      this.bonusSprites[0].setDisplaySize(size, size);
       this.bonusSprites[0].setAlpha(alpha);
       this.bonusSprites[0].setVisible(true);
     }
