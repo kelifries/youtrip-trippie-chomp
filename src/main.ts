@@ -6,10 +6,11 @@ import { GameScene } from './scenes/GameScene';
 import { GameOverScene } from './scenes/GameOverScene';
 
 // Fixed game resolution — Phaser scales this to fit any screen.
-// 480x960 = 1:2 portrait, closer to modern phone aspect (9:19.5) so the
-// game canvas fills more of the screen vertically.
+// 480x720 = 2:3 portrait. Stays width-bound on every phone (iPhone SE→Pro Max),
+// which means tile size = logicalTile × phoneW/480. Going taller (e.g. 960)
+// makes shorter phones height-bound and SHRINKS tiles — counterintuitively bad.
 const GAME_WIDTH = 480;
-const GAME_HEIGHT = 960;
+const GAME_HEIGHT = 720;
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,

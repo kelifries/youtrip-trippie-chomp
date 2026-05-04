@@ -21,7 +21,7 @@ import { getLevelConfig } from '../config/levels';
 
 // Fixed game dimensions (must match main.ts)
 const W = 480;
-const H = 960;
+const H = 720;
 const HUD_HEIGHT = 52;
 
 type GameState = 'playing' | 'dying' | 'levelwin' | 'scoreboard';
@@ -165,7 +165,7 @@ export class GameScene extends Phaser.Scene {
     // doesn't feel top-anchored on tall phones.
     const availW = W;        // gutter removed — every logical pixel goes to tile size
     const TOP_PAD = 16;      // clears HUD text + small gap
-    const BG_REVEAL = 60;    // exposed bg strip below maze
+    const BG_REVEAL = 40;    // exposed bg strip below maze
     const availH = H - HUD_HEIGHT - TOP_PAD - BG_REVEAL;
     this.tileSize = Math.floor(Math.min(availW / COLS, availH / ROWS));
     this.tileSize = Math.max(this.tileSize, 10);

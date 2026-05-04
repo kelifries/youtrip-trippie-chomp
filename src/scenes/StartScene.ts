@@ -7,7 +7,7 @@ export class StartScene extends Phaser.Scene {
   }
 
   create(): void {
-    const W = 480, H = 960;
+    const W = 480, H = 720;
 
     // Background — cover-fit the canvas
     const bg = this.add.image(W / 2, H / 2, 'game-over-bg');

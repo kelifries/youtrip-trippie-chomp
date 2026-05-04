@@ -7,7 +7,7 @@ export class HowToPlayScene extends Phaser.Scene {
   }
 
   create(): void {
-    const W = 480, H = 960;
+    const W = 480, H = 720;
     const font = '"Press Start 2P", monospace';
 
     // Ensure lobby music is playing (idempotent)
