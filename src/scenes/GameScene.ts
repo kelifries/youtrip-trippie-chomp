@@ -1822,14 +1822,15 @@ export class GameScene extends Phaser.Scene {
           const size = T * 1.4 * pulse;
           const x = this.offsetX + c * T + half;
           const y = this.offsetY + r * T + half;
-          // Outer wide halo (magenta) — soft falloff
-          this.entityGraphics.fillStyle(0xff3ec8, 0.18 * glowPulse);
+          // Purple halo stack — matches the YouTrip card sprite palette.
+          // Outer wide halo (deep violet) — soft falloff
+          this.entityGraphics.fillStyle(0x6b3fe0, 0.20 * glowPulse);
           this.entityGraphics.fillCircle(x, y, T * 1.6);
-          // Mid halo (gold)
-          this.entityGraphics.fillStyle(0xffd700, 0.32 * glowPulse);
+          // Mid halo (vivid purple)
+          this.entityGraphics.fillStyle(0x9d4dff, 0.32 * glowPulse);
           this.entityGraphics.fillCircle(x, y, T * 1.1);
-          // Tight bright core (white-gold)
-          this.entityGraphics.fillStyle(0xffeb88, 0.55 * glowPulse);
+          // Tight bright core (light lavender)
+          this.entityGraphics.fillStyle(0xd9b3ff, 0.55 * glowPulse);
           this.entityGraphics.fillCircle(x, y, T * 0.75);
           // Sprite — preserve aspect ratio
           const card = this.cardSprites[cardIdx];
