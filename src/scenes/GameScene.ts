@@ -1967,11 +1967,19 @@ export class GameScene extends Phaser.Scene {
       }
 
       let textureKey: string;
+      const isBonusLevel = getLevelConfig(this.level).isBonus === true;
       if (g.scared || g.eaten) {
-        textureKey = g.spriteKey + '-dead';
-        if (this.powerTimer < POWER_FLASH_THRESHOLD && this.powerTimer > 0 &&
-            Math.floor(this.powerTimer / 150) % 2 === 0) {
+        // Bonus levels: ghosts are mechanically scared (slow + eatable) but
+        // we render them with the normal alive texture — the X-eyed dead look
+        // at full bonus health reads as a bug. Eaten ghosts still show -dead.
+        if (isBonusLevel && !g.eaten) {
           textureKey = g.spriteKey;
+        } else {
+          textureKey = g.spriteKey + '-dead';
+          if (this.powerTimer < POWER_FLASH_THRESHOLD && this.powerTimer > 0 &&
+              Math.floor(this.powerTimer / 150) % 2 === 0) {
+            textureKey = g.spriteKey;
+          }
         }
       } else {
         textureKey = g.spriteKey;
