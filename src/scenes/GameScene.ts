@@ -406,13 +406,22 @@ export class GameScene extends Phaser.Scene {
     this.levelStartScore = this.score;
     this.levelDotsAtStart = this.totalDotsEaten;
     this.levelGhostsAtStart = this.totalGhostsEaten;
-    // Resize the dimmer to cover the maze region. Bonus levels keep a light
-    // dim so the nebula bg shows through but pellets stay readable; main levels
-    // use the full dimmer for contrast against busy destination art.
+    // Dimmer placement:
+    // - Bonus levels: full-screen dim. The trimmed maze leaves bg showing past
+    //   the wall ring; a maze-only rect would draw an obvious black square
+    //   over a bright bg. Full-screen keeps it uniform.
+    // - Main levels: maze-only rect so the destination art below the maze
+    //   (bg-reveal strip) stays bright.
     this.mazeDimmer.setVisible(true);
-    this.mazeDimmer.setPosition(this.offsetX, this.offsetY);
-    this.mazeDimmer.setSize(COLS * this.tileSize, ROWS * this.tileSize);
-    this.mazeDimmer.setFillStyle(0x000000, cfg.isBonus ? 0.55 : 0.45);
+    if (cfg.isBonus) {
+      this.mazeDimmer.setPosition(0, 0);
+      this.mazeDimmer.setSize(W, H);
+      this.mazeDimmer.setFillStyle(0x000000, 0.55);
+    } else {
+      this.mazeDimmer.setPosition(this.offsetX, this.offsetY);
+      this.mazeDimmer.setSize(COLS * this.tileSize, ROWS * this.tileSize);
+      this.mazeDimmer.setFillStyle(0x000000, 0.45);
+    }
     this.dotsLeft = countDots(this.map);
     this.player = new Player(this.level, this.mazeMeta);
     this.ghosts = [];

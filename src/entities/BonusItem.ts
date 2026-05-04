@@ -1,5 +1,5 @@
 import {
-  COLS, ROWS, WALL, GATE, DX, DY,
+  COLS, ROWS, WALL, GATE, DOT, DX, DY,
   BonusType, BONUS_TYPES, BONUS_LIFETIME,
   BONUS_BLINK_THRESHOLD,
 } from '../config/constants';
@@ -13,9 +13,12 @@ export interface BonusData {
 }
 
 /**
- * Find valid corridor tiles for bonus spawning.
- * Excludes ghost pen area (rows 6-12), card corners, outer edges,
- * and tiles with fewer than 2 exits.
+ * Find valid corridor tiles for bonus spawning. Spawns must be inside the
+ * playable area (≥2 dot neighbors) so trimmed/circular mazes don't drop
+ * pickups in the empty exterior cells beyond the wall ring. Player tile
+ * and adjacent tiles are excluded to avoid pickups appearing on top of
+ * Trippie. Tiles with <2 walkable exits are excluded so pickups can't
+ * land in dead-ends.
  */
 function findSpawnCandidates(map: number[][], player: Player): { col: number; row: number }[] {
   const walkable: { col: number; row: number }[] = [];
@@ -23,22 +26,20 @@ function findSpawnCandidates(map: number[][], player: Player): { col: number; ro
     for (let c = 0; c < COLS; c++) {
       const t = map[r][c];
       if (t === WALL || t === GATE) continue;
-      if (r === player.row && c === player.col) continue;
-      // Exclude ghost pen + tunnel area
-      if (r >= 6 && r <= 12) continue;
-      // Exclude card corners
-      if ((r === 2 && c === 1) || (r === 2 && c === 17) ||
-          (r === 15 && c === 1) || (r === 15 && c === 17)) continue;
-      // Exclude outer edges
-      if (c <= 0 || c >= COLS - 1) continue;
-      // Count exits
+      if (Math.abs(r - player.row) + Math.abs(c - player.col) < 2) continue;
       let exits = 0;
+      let dotsAround = (t === DOT) ? 1 : 0;
       for (let d = 0; d < 4; d++) {
         const nc = c + DX[d], nr = r + DY[d];
-        if (nc >= 0 && nc < COLS && nr >= 0 && nr < ROWS &&
-            map[nr][nc] !== WALL && map[nr][nc] !== GATE) exits++;
+        if (nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS) continue;
+        const nt = map[nr][nc];
+        if (nt !== WALL && nt !== GATE) exits++;
+        if (nt === DOT) dotsAround++;
       }
-      if (exits >= 2) walkable.push({ col: c, row: r });
+      // Need to be in active gameplay area (2+ dot neighborhood) and have a
+      // path through the cell (2+ exits). Drops candidates outside any
+      // trimmed-maze wall ring since those exterior 0-cells have no dots.
+      if (dotsAround >= 2 && exits >= 2) walkable.push({ col: c, row: r });
     }
   }
   return walkable;
