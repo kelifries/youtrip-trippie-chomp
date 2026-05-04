@@ -81,8 +81,8 @@ export class GameScene extends Phaser.Scene {
   private offsetX: number = 0;
   private offsetY: number = 0;
   private mazeGraphics!: Phaser.GameObjects.Graphics;
+  private wallGlowGraphics!: Phaser.GameObjects.Graphics;
   private mazeDimmer!: Phaser.GameObjects.Rectangle;
-  private mazeScanline!: Phaser.GameObjects.Rectangle;
   private entityGraphics!: Phaser.GameObjects.Graphics;
   private scoreText!: Phaser.GameObjects.Text;
   private levelText!: Phaser.GameObjects.Text;
@@ -137,6 +137,15 @@ export class GameScene extends Phaser.Scene {
     this.setupInput();
     this.startLevel();
 
+    // L1 cold-start animation — boarding pass with the destination tagline so
+    // the game opens with the same beat as later transitions, not a cut to
+    // gameplay. fromCode='' suppresses the route ribbon.
+    if (this.level === 1 && this.gameState === 'playing') {
+      const cfg = getLevelConfig(1);
+      this.showLevelTransition('', cfg.cityCode, cfg.destination, cfg.flag);
+      this.transitionFreezeTimer = 3800;
+    }
+
     // Debug: ?sb=1 jumps straight to the scoreboard with stub stats so the
     // pixel-art frame + Trippie victory render can be verified without playing
     // through L1.
@@ -186,17 +195,11 @@ export class GameScene extends Phaser.Scene {
     this.mazeGraphics = this.add.graphics();
     this.mazeGraphics.setDepth(2);
 
-    // Subtle breathing pulse on the maze layer — keeps walls from feeling static
-    // while staying gentle enough not to fight dot/sprite readability.
-    this.tweens.add({
-      targets: this.mazeGraphics, alpha: 0.88,
-      duration: 2400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
-    });
-
-    // Slow cyan scanline sweep across the maze region — gentle CRT/arcade hum.
-    this.mazeScanline = this.add.rectangle(W / 2, 0, W, 6, 0x00ffff, 0)
-      .setDepth(2.5).setBlendMode(Phaser.BlendModes.ADD);
-    this.startMazeScanline();
+    // Wall inner-glow layer — draws a 1px highlight just inside the wall
+    // border with alpha pulsing 0 → 0.6 every ~1.8s. Additive blend so walls
+    // feel like neon flickering rather than static blocks.
+    this.wallGlowGraphics = this.add.graphics();
+    this.wallGlowGraphics.setDepth(2.3).setBlendMode(Phaser.BlendModes.ADD);
 
     // Card sprites (power pellets) — depth 3 (above maze)
     this.cardSprites = [];
@@ -1173,54 +1176,69 @@ export class GameScene extends Phaser.Scene {
     }
 
     // ===== Phase A: Boarding stamp slams in (250ms-2600ms hold) =====
-    // Brand purple card with cyan border
+    const nextCfg = getLevelConfig(this.level);
+    const isBonusNext = nextCfg.isBonus === true;
+
+    // Brand purple card with cyan border (or magenta for bonus)
     const cardW = W * 0.84, cardH = 240;
     const cardBg = this.add.rectangle(W / 2, H / 2, cardW, cardH, 0x2a1845, 0.97)
-      .setDepth(124).setStrokeStyle(3, 0x00d2c8, 1).setAlpha(0).setScale(0.6).setRotation(-0.05);
+      .setDepth(124)
+      .setStrokeStyle(3, isBonusNext ? 0xff3ec8 : 0x00d2c8, 1)
+      .setAlpha(0).setScale(0.6).setRotation(-0.05);
     objs.push(cardBg);
     this.tweens.add({ targets: cardBg, alpha: 1, scale: 1, rotation: 0, duration: 350, ease: 'Back.easeOut' });
 
-    // Header: BOARDING / NEXT STOP
-    const header = this.add.text(W / 2, H / 2 - cardH / 2 + 28, 'NEXT STOP', {
+    // Header — tagline lives in level config (e.g. "MORE YEN FOR MY RAMEN")
+    const headerText = isBonusNext ? '★ BONUS ROUND ★' : nextCfg.tagline;
+    const header = this.add.text(W / 2, H / 2 - cardH / 2 + 28, headerText, {
       fontFamily: '"Press Start 2P", monospace',
-      fontSize: '11px', color: '#00d2c8',
+      fontSize: headerText.length > 18 ? '9px' : '11px',
+      color: isBonusNext ? '#ff3ec8' : '#00d2c8',
     }).setOrigin(0.5).setDepth(125).setAlpha(0);
     objs.push(header);
     this.tweens.add({ targets: header, alpha: 1, duration: 280, delay: 200 });
 
-    // Big flag + destination name (NOT just city code)
-    const big = this.add.text(W / 2, H / 2 - 10, destinationName.toUpperCase(), {
+    // Big copy — destination name OR "BONUS LEVEL"
+    const bigText = isBonusNext ? 'BONUS LEVEL' : destinationName.toUpperCase();
+    const big = this.add.text(W / 2, H / 2 - 10, bigText, {
       fontFamily: '"Press Start 2P", monospace',
-      fontSize: destinationName.length > 8 ? '24px' : '32px',
+      fontSize: bigText.length > 8 ? '24px' : '32px',
       color: '#FFD700',
       stroke: '#000', strokeThickness: 5,
     }).setOrigin(0.5).setDepth(125).setAlpha(0).setScale(0.6);
     objs.push(big);
     this.tweens.add({ targets: big, alpha: 1, scale: 1, duration: 350, delay: 350, ease: 'Back.easeOut' });
 
-    const flagText = this.add.text(W / 2, H / 2 + 32, `${flag} ${toCode}`, {
+    // Subline — flag/code on travel transitions, "SURVIVE 30 SECONDS" on bonus
+    const sublineText = isBonusNext ? 'SURVIVE 30 SECONDS' : `${flag} ${toCode}`;
+    const flagText = this.add.text(W / 2, H / 2 + 32, sublineText, {
       fontFamily: '"Press Start 2P", monospace',
-      fontSize: '18px', color: '#FFFFFF',
+      fontSize: isBonusNext ? '14px' : '18px',
+      color: isBonusNext ? '#FFFFFF' : '#FFFFFF',
       stroke: '#2a1845', strokeThickness: 4,
     }).setOrigin(0.5).setDepth(125).setAlpha(0);
     objs.push(flagText);
     this.tweens.add({ targets: flagText, alpha: 1, duration: 280, delay: 600 });
 
-    // Route ribbon under the card
-    const ribbonY = H / 2 + cardH / 2 - 32;
-    const fromText = this.add.text(W / 2 - 80, ribbonY, fromCode, {
-      fontFamily: '"Press Start 2P", monospace', fontSize: '11px', color: '#00d2c8',
-    }).setOrigin(0.5).setDepth(125).setAlpha(0);
-    objs.push(fromText);
-    const arrowText = this.add.text(W / 2, ribbonY, '→', {
-      fontFamily: 'monospace', fontSize: '20px', color: '#FFD700',
-    }).setOrigin(0.5).setDepth(125).setAlpha(0);
-    objs.push(arrowText);
-    const toText = this.add.text(W / 2 + 80, ribbonY, toCode, {
-      fontFamily: '"Press Start 2P", monospace', fontSize: '11px', color: '#FFD700',
-    }).setOrigin(0.5).setDepth(125).setAlpha(0);
-    objs.push(toText);
-    this.tweens.add({ targets: [fromText, arrowText, toText], alpha: 1, duration: 350, delay: 800 });
+    // Route ribbon — only on regular travel transitions with a known origin
+    const ribbonObjs: Phaser.GameObjects.GameObject[] = [];
+    if (!isBonusNext && fromCode) {
+      const ribbonY = H / 2 + cardH / 2 - 32;
+      const fromText = this.add.text(W / 2 - 80, ribbonY, fromCode, {
+        fontFamily: '"Press Start 2P", monospace', fontSize: '11px', color: '#00d2c8',
+      }).setOrigin(0.5).setDepth(125).setAlpha(0);
+      ribbonObjs.push(fromText);
+      const arrowText = this.add.text(W / 2, ribbonY, '→', {
+        fontFamily: 'monospace', fontSize: '20px', color: '#FFD700',
+      }).setOrigin(0.5).setDepth(125).setAlpha(0);
+      ribbonObjs.push(arrowText);
+      const toText = this.add.text(W / 2 + 80, ribbonY, toCode, {
+        fontFamily: '"Press Start 2P", monospace', fontSize: '11px', color: '#FFD700',
+      }).setOrigin(0.5).setDepth(125).setAlpha(0);
+      ribbonObjs.push(toText);
+      objs.push(...ribbonObjs);
+      this.tweens.add({ targets: ribbonObjs, alpha: 1, duration: 350, delay: 800 });
+    }
 
     // Stamp shake on slam
     this.cameras.main.shake(220, 0.008);
@@ -1228,7 +1246,7 @@ export class GameScene extends Phaser.Scene {
     // ===== Phase B: Plane wipe across (starts ~2600ms) =====
     this.time.delayedCall(2600, () => {
       // Fade card down so plane gets focus
-      this.tweens.add({ targets: [cardBg, header, big, flagText, fromText, arrowText, toText], alpha: 0, duration: 250 });
+      this.tweens.add({ targets: [cardBg, header, big, flagText, ...ribbonObjs], alpha: 0, duration: 250 });
 
       // Plane streaks across with a particle contrail
       const plane = this.add.image(-100, H * 0.5, 'plane-side').setDepth(123);
@@ -1585,24 +1603,35 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private startMazeScanline(): void {
-    // 5s cycle: scanline starts at top of maze, sweeps to bottom while fading
-    // in then out. Mid-sweep alpha peak ~0.22 (subtle).
-    const sweep = () => {
-      const yTop = this.offsetY;
-      const yBot = this.offsetY + ROWS * this.tileSize;
-      this.mazeScanline.setPosition(W / 2, yTop).setAlpha(0);
-      this.tweens.add({
-        targets: this.mazeScanline, y: yBot,
-        duration: 4200, ease: 'Linear',
-        onComplete: () => this.time.delayedCall(900, sweep),
-      });
-      this.tweens.add({
-        targets: this.mazeScanline, alpha: 0.22,
-        duration: 700, hold: 2800, yoyo: true, ease: 'Sine.easeInOut',
-      });
-    };
-    sweep();
+  private updateWallGlow(): void {
+    this.wallGlowGraphics.clear();
+    const t = this.time.now / 1000;
+    const alpha = (Math.sin(t * 3.5) + 1) / 2 * 0.55 + 0.05;  // 0.05..0.60
+    if (alpha < 0.05) return;
+    const T = this.tileSize;
+    const inset = 2;
+    const borderColor = COLOR_WALL_BORDER;
+    this.wallGlowGraphics.lineStyle(1, borderColor, alpha);
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (this.map[r][c] !== WALL) continue;
+        const x = this.offsetX + c * T;
+        const y = this.offsetY + r * T;
+        // Glow on every wall edge that touches a non-wall (the visible side).
+        if (r > 0 && this.map[r - 1][c] !== WALL) {
+          this.wallGlowGraphics.lineBetween(x + inset, y + inset, x + T - inset, y + inset);
+        }
+        if (r < ROWS - 1 && this.map[r + 1][c] !== WALL) {
+          this.wallGlowGraphics.lineBetween(x + inset, y + T - inset, x + T - inset, y + T - inset);
+        }
+        if (c > 0 && this.map[r][c - 1] !== WALL) {
+          this.wallGlowGraphics.lineBetween(x + inset, y + inset, x + inset, y + T - inset);
+        }
+        if (c < COLS - 1 && this.map[r][c + 1] !== WALL) {
+          this.wallGlowGraphics.lineBetween(x + T - inset, y + inset, x + T - inset, y + T - inset);
+        }
+      }
+    }
   }
 
   private fireLaser(): void {
@@ -1711,18 +1740,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private drawMagnetAura(): void {
+    // Visual aura intentionally removed — the dot-flying animation on pull is
+    // enough feedback. Keep the layer cleared in case it accumulated draws.
     this.magnetAuraGraphics.clear();
-    if (this.magnetTimer <= 0) return;
-    const T = this.tileSize;
-    const cx = this.offsetX + this.player.col * T + T / 2;
-    const cy = this.offsetY + this.player.row * T + T / 2;
-    const t = this.time.now / 1000;
-    const pulse = (Math.sin(t * 4) + 1) / 2; // 0..1
-    const baseR = MAGNET_RADIUS * T;
-    this.magnetAuraGraphics.lineStyle(2, 0x00ffff, 0.18 + pulse * 0.10);
-    this.magnetAuraGraphics.strokeCircle(cx, cy, baseR);
-    this.magnetAuraGraphics.lineStyle(2, 0xff3ec8, 0.12 + pulse * 0.08);
-    this.magnetAuraGraphics.strokeCircle(cx, cy, baseR * 0.7);
   }
 
   private drawMaze(): void {
@@ -1780,6 +1800,7 @@ export class GameScene extends Phaser.Scene {
     const half = T / 2;
     const now = this.time.now;
     this.entityGraphics.clear();
+    this.updateWallGlow();
 
     // Power pellet cards
     let cardIdx = 0;

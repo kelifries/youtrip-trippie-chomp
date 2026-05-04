@@ -46,6 +46,7 @@ export class PreloadScene extends Phaser.Scene {
     // Scoreboard polish — pixel-art frame + Trippie victory sprite
     this.load.image('scoreboard-frame', 'assets/scoreboard-frame.webp');
     this.load.image('trippie-victory', 'assets/sprite-trippie-victory.webp');
+    this.load.image('bg-underwater', 'assets/bg-underwater.webp');
 
     // Per-destination level backgrounds — driven by LEVELS config (deduped)
     const seen = new Set<string>();

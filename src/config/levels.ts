@@ -1,13 +1,14 @@
-// Per-level destination config. Locked sequence (Apr 29 2026, revised May 2):
-//   L1 = Singapore Changi (classic Pac-Man maze, tutorial)
-//   L2 = Tokyo (Mt Fuji silhouette)
-//   L3 = Bangkok (Wat Arun three spires)
-//   L4 = Bonus First-Class Lounge (open courtyard, slow ghosts, dot rush)
-//   L5 = Seoul (Namsan tower + Gangnam grid)
-//   L6 = Kuala Lumpur (Petronas Twin Towers)
-//   L7 = Sydney (typography "BEST RATES" maze + Opera House bg)
+// Per-level destination config. Sequence (revised May 4 2026):
+//   L1 = Singapore Changi (start)
+//   L2 = Tokyo
+//   L3 = Outer Space (BONUS — first bonus, early reward)
+//   L4 = Bangkok
+//   L5 = Seoul
+//   L6 = Underwater (BONUS — second bonus, mid-tour break)
+//   L7 = Kuala Lumpur
+//   L8 = Sydney
 //
-// After L7: loop L2-L7 with speed climbing (L1 is one-shot tutorial).
+// After L8: loop L2-L8 with speed climbing (L1 is one-shot tutorial).
 
 import type { MazeKey } from './mazes';
 
@@ -41,9 +42,10 @@ export interface LevelConfig {
   flag: string;          // emoji flag
   bgAsset: string;       // background asset key (loaded in PreloadScene)
   mazeKey: MazeKey;      // which maze layout to load
-  isBonus?: boolean;     // L4 lounge — slow ghosts, extra bonus items
+  isBonus?: boolean;     // bonus levels — slow ghosts, dot rush, dim bg
   palette?: PaletteOverride;
   shareHeadline: string;
+  tagline: string;       // boarding-pass header copy on level transition
   bgAnimations?: BgAnim[];   // animated bg layers, all rendered behind maze
 }
 
@@ -56,6 +58,7 @@ export const LEVELS: LevelConfig[] = [
     flag: '\u{1F1F8}\u{1F1EC}',
     bgAsset: 'bg-sg-airport',
     mazeKey: 'sg-airport',
+    tagline: 'TIME TO FLY',
     shareHeadline: 'Trippie boarded the world tour',
     bgAnimations: [
       // Plane taking off — bottom-left to top-right with takeoff arc
@@ -109,18 +112,8 @@ export const LEVELS: LevelConfig[] = [
     bgAsset: 'bg-jp-tokyo',
     mazeKey: 'jp-tokyo',
     palette: { wall: 0x2a1338, wallBorder: 0xff8fb1, dotAccent: 0xffc0cb },
+    tagline: 'MORE YEN FOR MY RAMEN',
     shareHeadline: 'Trippie made it to Tokyo',
-  },
-  {
-    id: 'th-bangkok',
-    destination: 'Bangkok',
-    country: 'Thailand',
-    cityCode: 'BKK',
-    flag: '\u{1F1F9}\u{1F1ED}',
-    bgAsset: 'bg-th-bangkok',
-    mazeKey: 'th-bangkok',
-    palette: { wall: 0x1f1505, wallBorder: 0xd4a017, dotAccent: 0xffd700 },
-    shareHeadline: 'Trippie made it to Bangkok',
   },
   {
     id: 'space',
@@ -132,7 +125,20 @@ export const LEVELS: LevelConfig[] = [
     mazeKey: 'lounge',
     isBonus: true,
     palette: { wall: 0x0a0a1a, wallBorder: 0x4FC3F7, dotAccent: 0xFFFFFF },
+    tagline: 'BONUS LEVEL',
     shareHeadline: 'Trippie blasted off to space',
+  },
+  {
+    id: 'th-bangkok',
+    destination: 'Bangkok',
+    country: 'Thailand',
+    cityCode: 'BKK',
+    flag: '\u{1F1F9}\u{1F1ED}',
+    bgAsset: 'bg-th-bangkok',
+    mazeKey: 'th-bangkok',
+    palette: { wall: 0x1f1505, wallBorder: 0xd4a017, dotAccent: 0xffd700 },
+    tagline: 'TUK-TUK TO TOMORROW',
+    shareHeadline: 'Trippie made it to Bangkok',
   },
   {
     id: 'kr-seoul',
@@ -143,7 +149,21 @@ export const LEVELS: LevelConfig[] = [
     bgAsset: 'bg-kr-seoul',
     mazeKey: 'kr-seoul',
     palette: { wall: 0x150f2a, wallBorder: 0x6b3fe0, dotAccent: 0x00ffe1 },
+    tagline: "WON-DERFUL DAY FOR CHOMPIN'",
     shareHeadline: 'Trippie made it to Seoul',
+  },
+  {
+    id: 'underwater',
+    destination: 'Coral Reef',
+    country: 'Underwater',
+    cityCode: 'SEA',
+    flag: '\u{1F30A}', // wave
+    bgAsset: 'bg-underwater',
+    mazeKey: 'underwater',
+    isBonus: true,
+    palette: { wall: 0x062845, wallBorder: 0x00d2c8, dotAccent: 0xffff66 },
+    tagline: 'BONUS LEVEL',
+    shareHeadline: 'Trippie dove into the reef',
   },
   {
     id: 'my-kl',
@@ -154,6 +174,7 @@ export const LEVELS: LevelConfig[] = [
     bgAsset: 'bg-my-kl',
     mazeKey: 'my-kl',
     palette: { wall: 0x0a1f15, wallBorder: 0x2a8b5f, dotAccent: 0x7fffd4 },
+    tagline: 'RINGGIT RUN',
     shareHeadline: 'Trippie made it to Kuala Lumpur',
   },
   {
@@ -165,15 +186,16 @@ export const LEVELS: LevelConfig[] = [
     bgAsset: 'bg-au-sydney',
     mazeKey: 'au-sydney',
     palette: { wall: 0x0a1429, wallBorder: 0x4a90e2, dotAccent: 0xffe066 },
+    tagline: "G'DAY, GREAT RATES",
     shareHeadline: 'Best rates, every trip',
   },
 ];
 
-// Resolve the level config for any level number, including endless loop after L7.
-// L1 = Changi (one-time tutorial); L2-L7 = main tour; L8+ loops back to L2.
+// Resolve the level config for any level number, including endless loop after L8.
+// L1 = Changi (one-time tutorial); L2-L8 = main tour; L9+ loops back to L2.
 export function getLevelConfig(level: number): LevelConfig {
   if (level <= LEVELS.length) return LEVELS[level - 1];
-  const tourLength = LEVELS.length - 1; // 6 levels after Changi
+  const tourLength = LEVELS.length - 1; // 7 levels after Changi
   const loopIdx = ((level - 2) % tourLength) + 1;
   return LEVELS[loopIdx];
 }
