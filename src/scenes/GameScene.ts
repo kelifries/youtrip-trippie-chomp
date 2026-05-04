@@ -160,11 +160,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private calculateLayout(): void {
-    // Maze tiling — clear HUD text vertically (HUD text bottom ~y=66) and
-    // leave space below the maze for animated bg art.
+    // Maze tiling — clear HUD text + small gap top, slim bg-reveal strip
+    // bottom. Center maze vertically in the remaining space so the game
+    // doesn't feel top-anchored on tall phones.
     const availW = W - 8;
-    const TOP_PAD = 28;      // clears HUD text + small gap
-    const BG_REVEAL = 110;   // exposed bg strip below maze
+    const TOP_PAD = 16;      // clears HUD text + small gap
+    const BG_REVEAL = 40;    // exposed bg strip below maze (was 110 — felt small on mobile)
     const availH = H - HUD_HEIGHT - TOP_PAD - BG_REVEAL;
     this.tileSize = Math.floor(Math.min(availW / COLS, availH / ROWS));
     this.tileSize = Math.max(this.tileSize, 10);
@@ -172,7 +173,7 @@ export class GameScene extends Phaser.Scene {
     const mazeW = COLS * this.tileSize;
     const mazeH = ROWS * this.tileSize;
     this.offsetX = (W - mazeW) / 2;
-    this.offsetY = HUD_HEIGHT + TOP_PAD;
+    this.offsetY = HUD_HEIGHT + TOP_PAD + Math.max(0, (availH - mazeH) / 2);
   }
 
   private setupRendering(): void {
@@ -411,7 +412,7 @@ export class GameScene extends Phaser.Scene {
     this.mazeDimmer.setVisible(true);
     this.mazeDimmer.setPosition(this.offsetX, this.offsetY);
     this.mazeDimmer.setSize(COLS * this.tileSize, ROWS * this.tileSize);
-    this.mazeDimmer.setFillStyle(0x000000, cfg.isBonus ? 0.32 : 0.45);
+    this.mazeDimmer.setFillStyle(0x000000, cfg.isBonus ? 0.55 : 0.45);
     this.dotsLeft = countDots(this.map);
     this.player = new Player(this.level, this.mazeMeta);
     this.ghosts = [];
@@ -1877,6 +1878,14 @@ export class GameScene extends Phaser.Scene {
       if (this.invincibleTimer > 0 && Math.floor(this.invincibleTimer / 100) % 2 === 0) {
         alpha = 0.4;
       }
+
+      // Subtle anchor glow behind Trippie — soft white pulse so the player
+      // sprite reads against busy destination/aquarium backgrounds.
+      const glowPulse = 0.55 + 0.25 * Math.sin(now * 0.005);
+      this.entityGraphics.fillStyle(0xffffff, 0.12 * glowPulse);
+      this.entityGraphics.fillCircle(px, py, T * 0.95);
+      this.entityGraphics.fillStyle(0xffffff, 0.18 * glowPulse);
+      this.entityGraphics.fillCircle(px, py, T * 0.65);
 
       pSprite.setTexture(this.getPlayerTexture());
       pSprite.setPosition(px, py);
