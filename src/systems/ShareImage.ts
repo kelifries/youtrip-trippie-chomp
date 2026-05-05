@@ -1,6 +1,6 @@
 /**
- * Generates a 1080x1920 share image for Instagram stories.
- * Mirrors the Phaser GameOverScene design (without the intro button).
+ * Generates a 1080x1920 IG Story share image.
+ * Optimized for the *viewer* (player's followers): score brag → Trippie → prize → CTA → brand.
  */
 export interface ShareStats {
   score: number;
@@ -9,7 +9,9 @@ export interface ShareStats {
   ghostsEaten: number;
 }
 
-// Draw text with black stroke (pixel-retro pop)
+const HANDLE = '@youtripsg';
+const TAGLINE = 'Best rates, every trip.';
+
 function drawStrokedText(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -59,92 +61,92 @@ export async function generateShareImage(
     x.fillRect(0, 0, W, H);
   }
 
-  // Card — matches GameOverScene (420x560 → scale 2.57x for 1080 width)
-  const cardW = 960, cardH = 1280;
+  // Heavier bg darkening — kill city-silhouette bleed-through
+  x.fillStyle = 'rgba(13, 13, 26, 0.55)';
+  x.fillRect(0, 0, W, H);
+
+  // Card — compact, centered
+  const cardW = 900, cardH = 1280;
   const cardX = (W - cardW) / 2;
-  const cardY = (H - cardH) / 2 - 20;
-  x.fillStyle = 'rgba(30, 20, 50, 0.75)';
+  const cardY = (H - cardH) / 2;
+  x.fillStyle = 'rgba(30, 20, 50, 0.88)';
   x.beginPath();
   x.roundRect(cardX, cardY, cardW, cardH, 40);
   x.fill();
-  x.strokeStyle = 'rgba(255,255,255,0.12)';
+  x.strokeStyle = 'rgba(255, 255, 255, 0.12)';
   x.lineWidth = 2;
   x.stroke();
 
-  const pad = 50;
   x.textAlign = 'center';
 
-  // Title "GAME OVER" — light purple, 2 lines, with black stroke
-  x.fillStyle = '#D8B4FE';
-  x.font = '700 92px "Press Start 2P", monospace';
-  drawStrokedText(x, 'GAME', W / 2, cardY + 155, 10);
-  drawStrokedText(x, 'OVER', W / 2, cardY + 265, 10);
+  // ── Section 1: Brag (2 lines) ──────────────────────────────
+  x.fillStyle = 'rgba(255, 255, 255, 0.7)';
+  x.font = '700 32px "Press Start 2P", monospace';
+  x.fillText('I SAVED', W / 2, 410);
 
-  // Trippie coins — tighter gap from title
+  // Score with overflow guard — shrinks 150 → 130 → 110 → 90 if needed
+  let scoreSize = 150;
+  const scoreText = `$${stats.score.toLocaleString('en-US')}`;
+  x.font = `700 ${scoreSize}px "Press Start 2P", monospace`;
+  while (x.measureText(scoreText).width > 800 && scoreSize > 90) {
+    scoreSize -= 20;
+    x.font = `700 ${scoreSize}px "Press Start 2P", monospace`;
+  }
+  x.fillStyle = '#FFD700';
+  drawStrokedText(x, scoreText, W / 2, 590, 10);
+
+  // ── Section 2: Trippie hero with character glow ────────────
+  const trippieY = 640;
+  const trippieW = 400;
+  const trippieH = trippieCoinsImg.complete && trippieCoinsImg.naturalWidth > 0
+    ? trippieW * (trippieCoinsImg.naturalHeight / trippieCoinsImg.naturalWidth)
+    : 344;
+
   if (trippieCoinsImg.complete && trippieCoinsImg.naturalWidth > 0) {
-    const imgW = 580;
-    const imgH = imgW * (trippieCoinsImg.naturalHeight / trippieCoinsImg.naturalWidth);
-    // at 580w, height = 580*(1645/1912) = 499. Top at cardY+275, bottom at cardY+774.
-    x.drawImage(trippieCoinsImg, (W - imgW) / 2, cardY + 275, imgW, imgH);
+    x.shadowColor = 'rgba(216, 180, 254, 0.65)';
+    x.shadowBlur = 60;
+    x.drawImage(trippieCoinsImg, (W - trippieW) / 2, trippieY, trippieW, trippieH);
+    x.shadowColor = 'transparent';
+    x.shadowBlur = 0;
   }
 
-  // Score "YOU SAVED S$X!" — tighter gap from coins
-  x.fillStyle = '#FFD700';
-  x.font = '700 46px "Press Start 2P", monospace';
-  drawStrokedText(x, `YOU SAVED S$${stats.score}!`, W / 2, cardY + 825, 6);
-
-  // Stat boxes — values in mint green
-  const statY = cardY + 865;
-  const statH = 230;
-  const statGap = 20;
-  const statW = (cardW - pad * 2 - statGap * 2) / 3;
-  const statData = [
-    { label: 'CURRENCIES\nEATEN', val: stats.dotsEaten },
-    { label: 'LEVEL\nREACHED', val: stats.level },
-    { label: 'FEE MONSTERS\nEATEN', val: stats.ghostsEaten },
-  ];
-
-  statData.forEach((s, i) => {
-    const sx2 = cardX + pad + i * (statW + statGap);
-
-    // Box
-    x.fillStyle = 'rgba(255,255,255,0.08)';
-    x.beginPath();
-    x.roundRect(sx2, statY, statW, statH, 24);
-    x.fill();
-    x.strokeStyle = 'rgba(255,255,255,0.15)';
-    x.lineWidth = 2;
-    x.stroke();
-
-    // Label
-    x.fillStyle = 'rgba(255,255,255,0.65)';
-    x.font = '700 18px "Press Start 2P", monospace';
-    const lines = s.label.split('\n');
-    lines.forEach((line, li) => {
-      x.fillText(line, sx2 + statW / 2, statY + 48 + li * 28);
-    });
-
-    // Value — mint green with stroke
-    x.fillStyle = '#00D2C8';
-    x.font = '700 62px "Press Start 2P", monospace';
-    drawStrokedText(x, String(s.val), sx2 + statW / 2, statY + 200, 5);
-  });
-
-  // CTA "SHARE ON IG & STAND A CHANCE / TO WIN A YEAR OF TRAVEL ON US"
-  // 28 chars at 28px monospace ≈ 784px, fits in 960 card width
-  x.fillStyle = 'rgba(255,255,255,0.7)';
-  x.font = '700 28px "Press Start 2P", monospace';
-  const ctaY = statY + statH + 72;
-  x.fillText('SHARE ON IG & STAND A CHANCE', W / 2, ctaY);
-  x.fillText('TO WIN A YEAR OF TRAVEL ON US', W / 2, ctaY + 44);
-
-  // Branding at bottom
-  x.fillStyle = '#D8B4FE';
-  x.font = '700 36px "Press Start 2P", monospace';
-  drawStrokedText(x, 'TRIPPIE CHOMP', W / 2, H - 180, 6);
-  x.fillStyle = 'rgba(255,255,255,0.5)';
+  // ── Section 3: Prize — floating text, no border ────────────
+  x.fillStyle = 'rgba(255, 255, 255, 0.78)';
   x.font = '700 20px "Press Start 2P", monospace';
-  x.fillText('powered by YouTrip', W / 2, H - 130);
+  x.fillText('Share your score for a chance to win', W / 2, 1050);
+
+  x.fillStyle = '#FFD700';
+  x.font = '700 36px "Press Start 2P", monospace';
+  drawStrokedText(x, 'A FREE YEAR OF TRAVEL', W / 2, 1120, 6);
+
+  // ── Section 4: CTA pill — dominant action ──────────────────
+  const ctaY = 1190;
+  const ctaH = 120;
+  const ctaW = cardW - 100;
+  const ctaX = cardX + 50;
+
+  x.fillStyle = '#00D2C8';
+  x.beginPath();
+  x.roundRect(ctaX, ctaY, ctaW, ctaH, ctaH / 2);
+  x.fill();
+  x.strokeStyle = 'rgba(0, 0, 0, 0.4)';
+  x.lineWidth = 3;
+  x.stroke();
+
+  x.fillStyle = '#0D0D1A';
+  x.font = '700 22px "Press Start 2P", monospace';
+  x.fillText('BEAT MY SCORE ON TRIPPIE CHOMP', W / 2, ctaY + 46);
+  x.font = '700 40px "Press Start 2P", monospace';
+  x.fillText(HANDLE, W / 2, ctaY + 96);
+
+  // ── Section 5: Brand lockup ────────────────────────────────
+  x.fillStyle = '#D8B4FE';
+  x.font = '700 48px "Press Start 2P", monospace';
+  drawStrokedText(x, 'YOUTRIP', W / 2, 1410, 6);
+
+  x.fillStyle = 'rgba(255, 255, 255, 0.75)';
+  x.font = '700 24px "Press Start 2P", monospace';
+  x.fillText(TAGLINE, W / 2, 1460);
 
   return new Promise<Blob>((resolve) => {
     c.toBlob((blob) => resolve(blob!), 'image/png');
@@ -160,7 +162,7 @@ export async function shareToIG(stats: ShareStats, gameOverBgImg: HTMLImageEleme
       await navigator.share({
         files: [file],
         title: 'Trippie Chomp',
-        text: `I saved S$${stats.score} on Trippie Chomp! Can you beat my score?`,
+        text: `I saved $${stats.score.toLocaleString('en-US')} on Trippie Chomp! Play at ${HANDLE} — share your score for a chance to win a free year of travel.`,
       });
     } catch (e: any) {
       if (e.name !== 'AbortError') downloadImage(blob);
