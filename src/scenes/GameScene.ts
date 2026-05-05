@@ -119,6 +119,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private parseStartLevel(): number {
+    if (!import.meta.env.DEV) return 1;
     const params = new URLSearchParams(window.location.search);
     const raw = params.get('level');
     if (!raw) return 1;
@@ -155,8 +156,8 @@ export class GameScene extends Phaser.Scene {
 
     // Debug: ?sb=1 jumps straight to the scoreboard with stub stats so the
     // pixel-art frame + Trippie victory render can be verified without playing
-    // through L1.
-    if (new URLSearchParams(window.location.search).get('sb') === '1') {
+    // through L1. DEV-only — Vite tree-shakes this in production builds.
+    if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('sb') === '1') {
       this.totalDotsEaten = 142;
       this.totalGhostsEaten = 3;
       this.score = 1840;
@@ -339,16 +340,18 @@ export class GameScene extends Phaser.Scene {
     };
 
     // DEV ONLY — press N to clear remaining dots and trigger level-up.
-    // TODO: REMOVE BEFORE PRODUCTION LAUNCH.
-    this.input.keyboard!.on('keydown-N', () => {
-      for (let r = 0; r < this.map.length; r++) {
-        for (let c = 0; c < this.map[r].length; c++) {
-          if (this.map[r][c] === 2) this.map[r][c] = 0;
+    // Gated behind import.meta.env.DEV so Vite tree-shakes it in prod.
+    if (import.meta.env.DEV) {
+      this.input.keyboard!.on('keydown-N', () => {
+        for (let r = 0; r < this.map.length; r++) {
+          for (let c = 0; c < this.map[r].length; c++) {
+            if (this.map[r][c] === 2) this.map[r][c] = 0;
+          }
         }
-      }
-      this.dotsLeft = 0;
-      this.bonusLevelTimer = 0;
-    });
+        this.dotsLeft = 0;
+        this.bonusLevelTimer = 0;
+      });
+    }
 
     // Native touch events on document — exact port of v1's swipe logic
     const onTouchStart = (e: TouchEvent) => {
@@ -393,17 +396,21 @@ export class GameScene extends Phaser.Scene {
   }
 
   private startLevel(): void {
-    const bpStyle = new URLSearchParams(window.location.search).get('bp');
-    const cfgDemo = getLevelConfig(this.level);
-    const fromCode = this.level > 1 ? getLevelConfig(this.level - 1).cityCode : 'YOU';
-    if (bpStyle === 'fly') {
-      this.time.delayedCall(200, () => {
-        this.showFlightInterstitial(fromCode, cfgDemo.cityCode, cfgDemo.destination, cfgDemo.flag);
-      });
-    } else if (bpStyle === 'card' || bpStyle === 'departure' || bpStyle === 'stamp') {
-      this.time.delayedCall(200, () => {
-        this.showBoardingPass(bpStyle as any, cfgDemo.destination, cfgDemo.cityCode, cfgDemo.flag);
-      });
+    // ?bp=fly|card|departure|stamp — DEV-only style switcher for the
+    // boarding-pass interstitial. Vite tree-shakes the whole branch in prod.
+    if (import.meta.env.DEV) {
+      const bpStyle = new URLSearchParams(window.location.search).get('bp');
+      const cfgDemo = getLevelConfig(this.level);
+      const fromCode = this.level > 1 ? getLevelConfig(this.level - 1).cityCode : 'YOU';
+      if (bpStyle === 'fly') {
+        this.time.delayedCall(200, () => {
+          this.showFlightInterstitial(fromCode, cfgDemo.cityCode, cfgDemo.destination, cfgDemo.flag);
+        });
+      } else if (bpStyle === 'card' || bpStyle === 'departure' || bpStyle === 'stamp') {
+        this.time.delayedCall(200, () => {
+          this.showBoardingPass(bpStyle as any, cfgDemo.destination, cfgDemo.cityCode, cfgDemo.flag);
+        });
+      }
     }
     this.applyLevelBackground();
     const cfg = getLevelConfig(this.level);
