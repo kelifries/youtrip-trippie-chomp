@@ -25,6 +25,17 @@ export class AudioSystem {
     } catch (e) {}
   }
 
+  // iOS Safari can re-suspend the AudioContext between scene transitions or
+  // after backgrounding. Calling resume() defensively before any scheduling
+  // prevents BGM from being scheduled with stale ctx.currentTime values that
+  // resolve to "in the past" once the ctx finally wakes up — and silently get
+  // dropped, which is the real-world failure mode on mobile.
+  private resumeIfSuspended(): void {
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+  }
+
   isMuted(): boolean { return this.muted; }
 
   setMuted(m: boolean): void {
@@ -37,6 +48,7 @@ export class AudioSystem {
 
   play(type: 'dot' | 'power' | 'ghost' | 'die' | 'click' | 'levelup' | 'gameover' | 'tick' | 'pop' | 'whoosh'): void {
     if (!this.ctx || this.muted) return;
+    this.resumeIfSuspended();
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
@@ -249,6 +261,7 @@ export class AudioSystem {
 
   startBGM(track: BGMTrack): void {
     if (!this.ctx) return;
+    this.resumeIfSuspended();
     if (this.currentBGM === track) return; // already playing
 
     this.stopBGM();
@@ -281,6 +294,7 @@ export class AudioSystem {
   // 90 BPM, dreamy arpeggios with soft triangle pad
   private lobbyLoop(): void {
     if (!this.ctx || this.currentBGM !== 'lobby' || !this.bgmGain) return;
+    this.resumeIfSuspended();
 
     const bpm = 90;
     const sn = 60 / bpm / 4; // 16th note
@@ -333,6 +347,7 @@ export class AudioSystem {
   // 160 BPM, bright major key with sparkly high notes
   private gameLoop(): void {
     if (!this.ctx || this.currentBGM !== 'game' || !this.bgmGain) return;
+    this.resumeIfSuspended();
 
     const bpm = 160;
     const sn = 60 / bpm / 2; // 8th note

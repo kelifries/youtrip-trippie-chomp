@@ -43,6 +43,10 @@ export class GameScene extends Phaser.Scene {
   // Timers (in ms)
   private bonusLevelTimer: number = 0;
   private powerTimer: number = 0;
+  // Visual-only flash after eating a power pellet — overrides the bonus-level
+  // "render alive" rule so the player gets scared-monster feedback during the
+  // power window even in bonus mode.
+  private powerPelletFlashTimer: number = 0;
   private comboCount: number = 0;
   private comboTimer: number = 0;  // ms until combo expires
   private comboText?: Phaser.GameObjects.Text;
@@ -129,7 +133,10 @@ export class GameScene extends Phaser.Scene {
     this.totalDotsEaten = 0;
     this.totalGhostsEaten = 0;
 
-    // Start gameplay music
+    // Start gameplay music — init() first so iOS resumes the AudioContext if
+    // it suspended across the scene transition. Without this, BGM gets
+    // scheduled with stale ctx.currentTime and silently never plays.
+    audioSystem.init();
     audioSystem.startBGM('game');
 
     this.calculateLayout();
@@ -461,6 +468,7 @@ export class GameScene extends Phaser.Scene {
     this.magnetPullCooldown = 0;
     this.freezeTimer = 0;
     this.invincibleTimer = 0;
+    this.powerPelletFlashTimer = 0;
     this.gameState = 'playing';
     this.updateHUD();
     this.drawMaze();
@@ -801,6 +809,12 @@ export class GameScene extends Phaser.Scene {
       });
     };
     btn.on('pointerdown', proceed);
+    // Tap anywhere on the overlay also proceeds — but only after the button
+    // bounces in, so accidental taps during the entry animation don't fire.
+    this.time.delayedCall(2500, () => {
+      overlay.setInteractive({ useHandCursor: true });
+      overlay.on('pointerdown', proceed);
+    });
     // Also allow Enter/Space to proceed once button is visible
     const keyHandler = (e: KeyboardEvent) => {
       if ((e.key === 'Enter' || e.key === ' ') && this.gameState === 'scoreboard') {
@@ -885,6 +899,7 @@ export class GameScene extends Phaser.Scene {
         this.ghosts.forEach(g => { g.scared = false; });
       }
     }
+    if (this.powerPelletFlashTimer > 0) this.powerPelletFlashTimer -= dt;
 
     // Move player
     const collected = this.player.move(this.map, dt, this.boostTimer > 0);
@@ -929,6 +944,7 @@ export class GameScene extends Phaser.Scene {
       this.cameras.main.shake(120, 0.003);
       // Don't decrement dotsLeft — power pellets don't gate level-up
       this.powerTimer = POWER_DURATION;
+      this.powerPelletFlashTimer = POWER_DURATION;
       this.ghostScore = SCORE_GHOST_BASE;
       this.ghosts.forEach(g => {
         if (!g.eaten && !g.home && !g.respawning) g.scared = true;
@@ -1970,9 +1986,11 @@ export class GameScene extends Phaser.Scene {
       const isBonusLevel = getLevelConfig(this.level).isBonus === true;
       if (g.scared || g.eaten) {
         // Bonus levels: ghosts are mechanically scared (slow + eatable) but
-        // we render them with the normal alive texture — the X-eyed dead look
-        // at full bonus health reads as a bug. Eaten ghosts still show -dead.
-        if (isBonusLevel && !g.eaten) {
+        // default to the alive texture so the X-eyed look at full bonus
+        // health doesn't read as a bug. Exception — when the player just ate
+        // a power pellet, flash the dead texture for the duration of the
+        // power window so the feedback registers.
+        if (isBonusLevel && !g.eaten && this.powerPelletFlashTimer <= 0) {
           textureKey = g.spriteKey;
         } else {
           textureKey = g.spriteKey + '-dead';
