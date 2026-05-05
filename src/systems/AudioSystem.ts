@@ -53,6 +53,8 @@ export class AudioSystem {
 
   isMuted(): boolean { return this.muted; }
 
+  isRunning(): boolean { return this.ctx !== null && this.ctx.state === 'running'; }
+
   setMuted(m: boolean): void {
     this.muted = m;
     try { localStorage.setItem('chomp-muted', m ? '1' : '0'); } catch (e) {}
