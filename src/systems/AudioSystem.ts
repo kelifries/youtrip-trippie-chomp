@@ -13,14 +13,13 @@ export class AudioSystem {
   private muted: boolean = false;
 
   init(): void {
-    this.initCount++;
     try {
       const isFirstInit = !this.ctx;
       if (!this.ctx) {
         this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
       if (this.ctx.state === 'suspended' || (this.ctx.state as string) === 'interrupted') {
-        this.ctx.resume().catch((e: any) => { this.lastError = 'resume:' + (e?.message ?? e); });
+        this.ctx.resume();
       }
       if (isFirstInit) {
         const buffer = this.ctx.createBuffer(1, 1, 22050);
@@ -32,9 +31,7 @@ export class AudioSystem {
       try {
         this.muted = localStorage.getItem('chomp-muted') === '1';
       } catch (e) {}
-    } catch (e: any) {
-      this.lastError = 'init:' + (e?.message ?? e);
-    }
+    } catch (e) {}
   }
 
   // iOS Safari can re-suspend the AudioContext between scene transitions or
@@ -48,22 +45,9 @@ export class AudioSystem {
     }
   }
 
-  // Debug counters — surfaced via getDebugInfo() to an on-screen overlay so we
-  // can pinpoint where the iOS audio chain breaks without a console.
-  private initCount = 0;
-  private playCount = 0;
-  private lastError = '';
-
   isMuted(): boolean { return this.muted; }
 
   isRunning(): boolean { return this.ctx !== null && this.ctx.state === 'running'; }
-
-  getDebugInfo(): string {
-    const state = this.ctx?.state ?? 'no-ctx';
-    const sr = this.ctx?.sampleRate ?? 0;
-    const ct = this.ctx?.currentTime?.toFixed(2) ?? '-';
-    return `audio:${state} sr:${sr} t:${ct} init:${this.initCount} play:${this.playCount} mute:${this.muted} err:${this.lastError}`;
-  }
 
   setMuted(m: boolean): void {
     this.muted = m;
@@ -76,7 +60,6 @@ export class AudioSystem {
   play(type: 'dot' | 'power' | 'ghost' | 'die' | 'click' | 'levelup' | 'gameover' | 'tick' | 'pop' | 'whoosh'): void {
     if (!this.ctx || this.muted) return;
     this.resumeIfSuspended();
-    this.playCount++;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();

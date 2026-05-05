@@ -28,23 +28,6 @@ document.addEventListener('touchstart', unlockAudio, { capture: true, passive: t
 document.addEventListener('mousedown', unlockAudio, { capture: true });
 document.addEventListener('keydown', unlockAudio, { capture: true });
 
-// Audio diagnostic overlay — visible state for in-the-wild debugging on
-// devices where we can't see the dev console. REMOVE once audio is verified.
-const dbg = document.createElement('div');
-dbg.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:rgba(0,0,0,0.85);color:#0f0;font:9px monospace;padding:4px 6px;pointer-events:none;text-align:left;line-height:1.3;';
-dbg.textContent = 'audio: pending first tap';
-document.body.appendChild(dbg);
-const updateDbg = () => { dbg.textContent = audioSystem.getDebugInfo(); };
-setInterval(updateDbg, 200);
-window.addEventListener('error', (e) => {
-  dbg.textContent = 'JS ERR: ' + (e.message || e.error?.message || 'unknown');
-  dbg.style.color = '#f33';
-});
-window.addEventListener('unhandledrejection', (e) => {
-  dbg.textContent = 'PROMISE REJ: ' + (e.reason?.message || e.reason || 'unknown');
-  dbg.style.color = '#f33';
-});
-
 // Fixed game resolution — Phaser scales this to fit any screen.
 // 480x720 = 2:3 portrait. Stays width-bound on every phone (iPhone SE→Pro Max),
 // which means tile size = logicalTile × phoneW/480. Going taller (e.g. 960)
