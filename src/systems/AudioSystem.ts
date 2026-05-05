@@ -13,11 +13,26 @@ export class AudioSystem {
   private muted: boolean = false;
 
   init(): void {
+    const isFirstInit = !this.ctx;
     if (!this.ctx) {
       this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
     if (this.ctx.state === 'suspended') {
       this.ctx.resume();
+    }
+    // iOS / Chrome iOS unlock — Apple's WebKit (which Chrome iOS also uses)
+    // often ignores plain ctx.resume() even inside a user gesture. The
+    // canonical workaround is to play a 1-sample silent buffer synchronously
+    // — that forces the ctx into the running state for real, not just on
+    // paper. Only needed once per AudioContext lifetime.
+    if (isFirstInit) {
+      try {
+        const buffer = this.ctx.createBuffer(1, 1, 22050);
+        const source = this.ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(this.ctx.destination);
+        source.start(0);
+      } catch (e) {}
     }
     // Restore mute preference from localStorage
     try {
