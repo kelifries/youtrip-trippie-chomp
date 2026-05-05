@@ -4,5 +4,6 @@ dist
 *.log
 .vite
 .playwright-cli/
+.wrangler/
 generated/picks-v2/
 generated/refs/
