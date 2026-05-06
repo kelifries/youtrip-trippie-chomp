@@ -90,7 +90,7 @@ export async function generateShareImage(
     x.font = `${scoreSize}px "Press Start 2P", monospace`;
   }
   x.fillStyle = '#10DBAC';
-  drawStrokedText(x, scoreText, W / 2, 580, 10);
+  drawStrokedText(x, scoreText, W / 2, 620, 10);
 
   return new Promise<Blob>((resolve) => {
     c.toBlob((blob) => resolve(blob!), 'image/png');
