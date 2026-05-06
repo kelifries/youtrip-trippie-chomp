@@ -43,8 +43,7 @@ export class PreloadScene extends Phaser.Scene {
     // Game-over background (used by GameOverScene + ShareImage canvas source)
     this.load.image('game-over-bg', 'assets/game-over-bg.webp');
 
-    // Scoreboard polish — pixel-art frame + Trippie victory sprite
-    this.load.image('scoreboard-frame', 'assets/scoreboard-frame.webp');
+    // Scoreboard polish — Trippie victory sprite
     this.load.image('trippie-victory', 'assets/sprite-trippie-victory.webp');
     this.load.image('bg-underwater', 'assets/bg-underwater.webp');
 
