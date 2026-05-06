@@ -11,6 +11,12 @@ export interface ShareStats {
 
 const HANDLE = '@youtripsg';
 const TAGLINE = 'Best rates, every trip.';
+// Brand-safety cap on the share artifact only — game score is unbounded so
+// real grinders aren't blocked. Caps the visual at $999,999 so dev-tools
+// edits can't post "$1 trillion" to IG and damage campaign credibility.
+// Anyone legitimately above the cap (top 0.01%) still gets a respectable
+// share image; everyone else is unaffected.
+const SHARE_SCORE_MAX = 999_999;
 
 function drawStrokedText(
   ctx: CanvasRenderingContext2D,
@@ -84,9 +90,11 @@ export async function generateShareImage(
   x.font = '700 32px "Press Start 2P", monospace';
   x.fillText('I SAVED', W / 2, 410);
 
-  // Score with overflow guard — shrinks 150 → 130 → 110 → 90 if needed
+  // Score with overflow guard — shrinks 150 → 130 → 110 → 90 if needed.
+  // Score capped at SHARE_SCORE_MAX for brand safety (see top of file).
+  const displayScore = Math.min(stats.score, SHARE_SCORE_MAX);
   let scoreSize = 150;
-  const scoreText = `$${stats.score.toLocaleString('en-US')}`;
+  const scoreText = `$${displayScore.toLocaleString('en-US')}`;
   x.font = `700 ${scoreSize}px "Press Start 2P", monospace`;
   while (x.measureText(scoreText).width > 800 && scoreSize > 90) {
     scoreSize -= 20;
@@ -157,12 +165,14 @@ export async function shareToIG(stats: ShareStats, gameOverBgImg: HTMLImageEleme
   const blob = await generateShareImage(stats, gameOverBgImg, trippieCoinsImg);
   const file = new File([blob], 'trippie-chomp-score.png', { type: 'image/png' });
 
+  // Cap the share-sheet text score too so it stays consistent with the image.
+  const displayScore = Math.min(stats.score, SHARE_SCORE_MAX);
   if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
     try {
       await navigator.share({
         files: [file],
         title: 'Trippie Chomp',
-        text: `I saved $${stats.score.toLocaleString('en-US')} on Trippie Chomp! Play at ${HANDLE} — share your score for a chance to win a free year of travel.`,
+        text: `I saved $${displayScore.toLocaleString('en-US')} on Trippie Chomp! Play at ${HANDLE} — share your score for a chance to win a free year of travel.`,
       });
     } catch (e: any) {
       if (e.name !== 'AbortError') downloadImage(blob);
