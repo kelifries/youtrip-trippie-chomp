@@ -100,7 +100,7 @@ export async function generateShareImage(
     scoreSize -= 20;
     x.font = `700 ${scoreSize}px "Press Start 2P", monospace`;
   }
-  x.fillStyle = '#FFD700';
+  x.fillStyle = '#10DBAC';
   drawStrokedText(x, scoreText, W / 2, 590, 10);
 
   // ── Section 2: Trippie hero with character glow ────────────
