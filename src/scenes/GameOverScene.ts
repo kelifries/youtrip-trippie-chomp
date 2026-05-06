@@ -139,8 +139,8 @@ export class GameOverScene extends Phaser.Scene {
     shareBtnG.on('pointerdown', () => {
       audioSystem.play('click');
       const gameOverBg = this.textures.get('game-over-bg').getSourceImage() as HTMLImageElement;
-      const trippieCoins = this.textures.get('trippie-coins').getSourceImage() as HTMLImageElement;
-      shareToIG(this.stats, gameOverBg, trippieCoins);
+      const shareCard = this.textures.get('share-card').getSourceImage() as HTMLImageElement;
+      shareToIG(this.stats, gameOverBg, shareCard);
     });
 
     // Play again button

@@ -43,6 +43,9 @@ export class PreloadScene extends Phaser.Scene {
     // Game-over background (used by GameOverScene + ShareImage canvas source)
     this.load.image('game-over-bg', 'assets/game-over-bg.webp');
 
+    // Pre-designed IG Story share card overlay (1080x1920, transparent corners)
+    this.load.image('share-card', 'assets/share-card.webp');
+
     // Scoreboard polish — Trippie victory sprite
     this.load.image('trippie-victory', 'assets/sprite-trippie-victory.webp');
     this.load.image('bg-underwater', 'assets/bg-underwater.webp');
