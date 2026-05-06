@@ -74,14 +74,20 @@ export async function generateShareImage(
 
   // Layer 3: score text in the gap between "I SAVED" and Trippie.
   // Mint #10DBAC, centered. Cap protects against fake-score share posts.
+  // Await the font explicitly — canvas text rendering needs the font ready
+  // synchronously, otherwise it silently falls back to system monospace
+  // (which doesn't match the Press Start 2P baked into the card asset).
   const displayScore = Math.min(stats.score, SHARE_SCORE_MAX);
   const scoreText = `$${displayScore.toLocaleString('en-US')}`;
   let scoreSize = 150;
+  if ('fonts' in document && typeof document.fonts.load === 'function') {
+    try { await document.fonts.load(`${scoreSize}px "Press Start 2P"`); } catch (e) {}
+  }
   x.textAlign = 'center';
-  x.font = `700 ${scoreSize}px "Press Start 2P", monospace`;
+  x.font = `${scoreSize}px "Press Start 2P", monospace`;
   while (x.measureText(scoreText).width > 800 && scoreSize > 90) {
     scoreSize -= 20;
-    x.font = `700 ${scoreSize}px "Press Start 2P", monospace`;
+    x.font = `${scoreSize}px "Press Start 2P", monospace`;
   }
   x.fillStyle = '#10DBAC';
   drawStrokedText(x, scoreText, W / 2, 580, 10);
