@@ -3,6 +3,7 @@ import { Player } from '../entities/Player';
 import { Ghost } from '../entities/Ghost';
 import { BonusData, spawnBonus, isBonusBlinking } from '../entities/BonusItem';
 import { audioSystem } from '../systems/AudioSystem';
+import { logPlay } from '../systems/Stats';
 import { cloneMaze, countDots, analyzeMaze, type MazeMeta } from '../config/mazes';
 import {
   COLS, ROWS, WALL, DOT, POWER, EMPTY, GATE, DX, DY,
@@ -79,6 +80,7 @@ export class GameScene extends Phaser.Scene {
   private levelStartScore: number = 0;
   private levelDotsAtStart: number = 0;
   private levelGhostsAtStart: number = 0;
+  private gameStartMs: number = 0;
 
   // Rendering
   private tileSize: number = 24;
@@ -133,6 +135,7 @@ export class GameScene extends Phaser.Scene {
     this.level = this.parseStartLevel();
     this.totalDotsEaten = 0;
     this.totalGhostsEaten = 0;
+    this.gameStartMs = Date.now();
 
     // Start gameplay music — init() first so iOS resumes the AudioContext if
     // it suspended across the scene transition. Without this, BGM gets
@@ -595,6 +598,7 @@ export class GameScene extends Phaser.Scene {
       if (this.lives <= 0) {
         audioSystem.stopBGM();
         audioSystem.play('gameover');
+        logPlay(this.score, this.level, Math.round((Date.now() - this.gameStartMs) / 1000));
         this.scene.start('GameOverScene', {
           score: this.score,
           level: this.level,

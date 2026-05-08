@@ -1,0 +1,13 @@
+name = "youtrip-trippie-chomp"
+compatibility_date = "2026-05-07"
+pages_build_output_dir = "dist"
+
+# D1 binding consumed by functions/api/log-play.ts.
+# database_id is filled in after `npx wrangler d1 create chomp-stats`.
+# Production deploys ALSO require this binding to be added in the CF Pages
+# dashboard (Settings → Functions → Bindings → D1) — wrangler.toml alone
+# does not configure Pages production bindings.
+[[d1_databases]]
+binding = "DB"
+database_name = "chomp-stats"
+database_id = "8b8061eb-74f2-450b-b162-dece41add0f4"

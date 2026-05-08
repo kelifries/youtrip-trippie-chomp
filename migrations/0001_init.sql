@@ -1,0 +1,9 @@
+CREATE TABLE plays (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts INTEGER NOT NULL,
+  score INTEGER NOT NULL,
+  level INTEGER NOT NULL,
+  duration_s INTEGER NOT NULL
+);
+
+CREATE INDEX idx_plays_ts ON plays(ts);
