@@ -4,7 +4,9 @@ interface Env {
 
 const SCORE_MAX = 999_999;
 const LEVEL_MIN = 1;
-const LEVEL_MAX = 8;
+// Level is a monotonic counter — game loops L2-L8 visually after L8 but
+// `this.level` keeps climbing (9, 10, 11...). Cap is a sanity ceiling.
+const LEVEL_MAX = 999;
 const DURATION_MAX = 3600;
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
